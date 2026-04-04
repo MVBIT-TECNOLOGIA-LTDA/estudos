@@ -137,6 +137,7 @@ app.post('/api/estudos', async (req, res) => {
         data_estudo: body.data_estudo || null,
         quantidade: body.quantidade || null,
         total_acertos: body.total_acertos || null,
+        data_revisao: body.data_revisao || null,
         concluido: body.concluido || false,
     };
     const { data, error } = await supabase
