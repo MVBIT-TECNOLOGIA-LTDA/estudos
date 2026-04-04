@@ -19,7 +19,7 @@ let state = {
 let editingId    = null;
 let deleteId     = null;
 let currentTab   = 0;
-const tabs       = ['tab-geral', 'tab-questoes'];
+const tabs       = ['tab-geral', 'tab-questoes', 'tab-revisao'];
 
 // Variáveis globais usadas pelo calendar.js
 let currentMonth      = new Date();
@@ -273,8 +273,8 @@ function updateTable() {
                     <label for="check-${study.id}" class="checkbox-label-styled"></label>
                 </div>
             </td>
-            <td>${materiaDisplay}</td>
             <td>${formacaoDisplay}</td>
+            <td>${materiaDisplay}</td>
             <td>${unidadeDisplay}</td>
             <td>${conteudoDisplay}</td>
             <td>${study.quantidade || '-'}</td>
@@ -293,6 +293,7 @@ function getStudyStatus(study) {
     if (!study.data_estudo) return 'programado';
     const hoje = new Date().toISOString().split('T')[0];
     if (study.data_estudo < hoje) return 'fora-prazo';
+    if (study.data_revisao && study.data_revisao.trim() !== '') return 'revisao';
     return 'programado';
 }
 
@@ -305,13 +306,16 @@ function updateDashboard() {
 
     const finalizados = ms.filter(s => s.concluido).length;
     const foraPrazo   = ms.filter(s => !s.concluido && s.data_estudo && s.data_estudo < hoje).length;
-    const programados = ms.filter(s => !s.concluido && (!s.data_estudo || s.data_estudo >= hoje)).length;
+    const programados = ms.filter(s => !s.concluido && (!s.data_estudo || s.data_estudo >= hoje) && !(s.data_revisao && s.data_revisao.trim())).length;
+    const revisao     = ms.filter(s => s.data_revisao && s.data_revisao.trim() !== '').length;
 
     document.getElementById('dashboardFinalizados').textContent = finalizados;
     document.getElementById('dashboardForaPrazo').textContent   = foraPrazo;
     document.getElementById('dashboardProgramados').textContent = programados;
+    document.getElementById('dashboardRevisao').textContent     = revisao;
 
     atualizarPulseBadge(document.getElementById('cardForaPrazo'), foraPrazo);
+    atualizarPulseBadge(document.getElementById('cardRevisao'),   revisao);
 }
 
 function atualizarPulseBadge(card, count) {
@@ -354,21 +358,27 @@ function abrirModalDashboard(tipo) {
     } else if (tipo === 'fora-prazo') {
         title = 'Estudos Fora do Prazo';
         lista = ms.filter(s => !s.concluido && s.data_estudo && s.data_estudo < hoje);
+    } else if (tipo === 'revisao') {
+        title = 'Revisões Agendadas';
+        lista = ms.filter(s => s.data_revisao && s.data_revisao.trim() !== '');
     } else {
         title = 'Estudos Programados';
-        lista = ms.filter(s => !s.concluido && (!s.data_estudo || s.data_estudo >= hoje));
+        lista = ms.filter(s => !s.concluido && (!s.data_estudo || s.data_estudo >= hoje) && !(s.data_revisao && s.data_revisao.trim()));
     }
 
     if (lista.length === 0) { showToast('Nenhum item encontrado', 'error'); return; }
 
     const body = document.getElementById('dashboardModalBody');
-    let html = '<table style="width:100%;"><thead><tr><th>Matéria</th><th>Formação</th><th>Conteúdo</th><th>Data</th></tr></thead><tbody>';
+    let html = '<table style="width:100%;"><thead><tr><th>Formação</th><th>Matéria</th><th>Conteúdo</th><th>Data</th></tr></thead><tbody>';
     lista.forEach(item => {
+        const dataExibir = tipo === 'revisao'
+            ? (item.data_revisao ? new Date(item.data_revisao + 'T00:00:00').toLocaleDateString('pt-BR') : '-')
+            : (item.data_estudo  ? new Date(item.data_estudo  + 'T00:00:00').toLocaleDateString('pt-BR') : '-');
         html += `<tr>
-            <td>${(item.materia_nome  || '-').toUpperCase()}</td>
             <td>${(item.formacao_nome || '-').toUpperCase()}</td>
+            <td>${(item.materia_nome  || '-').toUpperCase()}</td>
             <td>${(item.conteudo      || '-').toUpperCase()}</td>
-            <td>${item.data_estudo ? new Date(item.data_estudo + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+            <td>${dataExibir}</td>
         </tr>`;
     });
     html += '</tbody></table>';
@@ -421,6 +431,7 @@ function editStudy(id) {
     document.getElementById('data_estudo').value     = study.data_estudo || '';
     document.getElementById('quantidade').value      = study.quantidade  || '';
     document.getElementById('total_acertos').value   = study.total_acertos || '';
+    document.getElementById('data_revisao').value    = study.data_revisao  || '';
 
     showTab(currentTab);
     updateNavigationButtons();
@@ -449,6 +460,7 @@ async function saveStudy(event) {
         data_estudo:   document.getElementById('data_estudo').value || null,
         quantidade,
         total_acertos: acertos,
+        data_revisao:  document.getElementById('data_revisao').value || null,
         concluido:     editingId ? (state.studies.find(s => s.id == editingId)?.concluido || false) : false,
     };
 
