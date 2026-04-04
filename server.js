@@ -50,7 +50,6 @@ app.post('/api/materias', async (req, res) => {
 // DELETE /api/materias/:id
 app.delete('/api/materias/:id', async (req, res) => {
     const { id } = req.params;
-    // Remove estudos vinculados primeiro (cascade no SQL já faz isso, mas por segurança)
     await supabase.from('estudos').delete().eq('materia_id', id);
     const { error } = await supabase.from('materias').delete().eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
@@ -109,8 +108,16 @@ app.get('/api/estudos', async (req, res) => {
         .order('data_estudo', { ascending: false });
 
     if (mes && ano) {
-        const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
-        const fim = new Date(ano, mes, 0).toISOString().split('T')[0]; // último dia do mês
+        const mesInt = parseInt(mes, 10);
+        const anoInt = parseInt(ano, 10);
+
+        // Formata início: primeiro dia do mês
+        const inicio = `${anoInt}-${String(mesInt).padStart(2, '0')}-01`;
+
+        // Formata fim: último dia do mês sem depender de new Date() com overflow
+        const ultimoDia = new Date(anoInt, mesInt, 0).getDate(); // getDate() do dia 0 do próximo mês = último dia do mês atual
+        const fim = `${anoInt}-${String(mesInt).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
+
         query = query.gte('data_estudo', inicio).lte('data_estudo', fim);
     }
 
@@ -130,15 +137,15 @@ app.get('/api/estudos', async (req, res) => {
 app.post('/api/estudos', async (req, res) => {
     const body = req.body;
     const payload = {
-        materia_id: body.materia_id || null,
-        formacao_id: body.formacao_id || null,
-        unidade: body.unidade || null,
-        conteudo: body.conteudo || null,
-        data_estudo: body.data_estudo || null,
-        quantidade: body.quantidade || null,
+        materia_id:    body.materia_id    || null,
+        formacao_id:   body.formacao_id   || null,
+        unidade:       body.unidade       ? body.unidade.toUpperCase()  : null,
+        conteudo:      body.conteudo      ? body.conteudo.toUpperCase() : null,
+        data_estudo:   body.data_estudo   || null,
+        quantidade:    body.quantidade    || null,
         total_acertos: body.total_acertos || null,
-        data_revisao: body.data_revisao || null,
-        concluido: body.concluido || false,
+        data_revisao:  body.data_revisao  || null,
+        concluido:     body.concluido     || false,
     };
     const { data, error } = await supabase
         .from('estudos')
@@ -148,7 +155,7 @@ app.post('/api/estudos', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     res.status(201).json({
         ...data,
-        materia_nome: data.materias?.nome || '',
+        materia_nome:  data.materias?.nome  || '',
         formacao_nome: data.formacoes?.nome || '',
     });
 });
@@ -158,14 +165,14 @@ app.put('/api/estudos/:id', async (req, res) => {
     const { id } = req.params;
     const body = req.body;
     const payload = {
-        materia_id: body.materia_id || null,
-        formacao_id: body.formacao_id || null,
-        unidade: body.unidade || null,
-        conteudo: body.conteudo || null,
-        data_estudo: body.data_estudo || null,
-        quantidade: body.quantidade || null,
+        materia_id:    body.materia_id    || null,
+        formacao_id:   body.formacao_id   || null,
+        unidade:       body.unidade       ? body.unidade.toUpperCase()  : null,
+        conteudo:      body.conteudo      ? body.conteudo.toUpperCase() : null,
+        data_estudo:   body.data_estudo   || null,
+        quantidade:    body.quantidade    || null,
         total_acertos: body.total_acertos || null,
-        concluido: body.concluido !== undefined ? body.concluido : false,
+        concluido:     body.concluido !== undefined ? body.concluido : false,
     };
     const { data, error } = await supabase
         .from('estudos')
@@ -176,7 +183,7 @@ app.put('/api/estudos/:id', async (req, res) => {
     if (error) return res.status(500).json({ error: error.message });
     res.json({
         ...data,
-        materia_nome: data.materias?.nome || '',
+        materia_nome:  data.materias?.nome  || '',
         formacao_nome: data.formacoes?.nome || '',
     });
 });
