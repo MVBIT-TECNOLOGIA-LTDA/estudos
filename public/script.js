@@ -32,9 +32,59 @@ let licitacoes        = [];  // alias para estudos (calendar.js referencia esta 
 document.addEventListener('DOMContentLoaded', () => {
     updateMonthDisplay();
     setupConnectionStatus();
+    setupUppercaseInputs();   // ← força caixa alta em todos os text inputs
     carregarTudo();
     setInterval(checkConnection, 15000);
 });
+
+// =====================================================
+// FORÇAR CAIXA ALTA EM INPUTS DE TEXTO
+// Aplica a todos os <input type="text"> e <textarea>
+// existentes no DOM e também observa novos elementos
+// adicionados dinamicamente (modais que surgem depois).
+// =====================================================
+function forceUppercase(e) {
+    const el = e.target;
+    const start = el.selectionStart;
+    const end   = el.selectionEnd;
+    el.value = el.value.toUpperCase();
+    // Reposiciona o cursor após a transformação
+    el.setSelectionRange(start, end);
+}
+
+function setupUppercaseInputs() {
+    // Aplica aos campos já presentes no DOM
+    applyUppercaseToExisting(document);
+
+    // Observa adições futuras (modais abertos dinamicamente)
+    const observer = new MutationObserver(mutations => {
+        mutations.forEach(m => {
+            m.addedNodes.forEach(node => {
+                if (node.nodeType === 1) applyUppercaseToExisting(node);
+            });
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
+function applyUppercaseToExisting(root) {
+    const selector = 'input[type="text"], input:not([type]), textarea';
+    const elements = root.querySelectorAll
+        ? root.querySelectorAll(selector)
+        : [];
+    elements.forEach(el => {
+        // Evita duplicar o listener
+        if (!el.dataset.uppercaseApplied) {
+            el.addEventListener('input', forceUppercase);
+            el.dataset.uppercaseApplied = 'true';
+        }
+    });
+    // Verifica se o próprio root também é um input elegível
+    if (root.matches && root.matches(selector) && !root.dataset.uppercaseApplied) {
+        root.addEventListener('input', forceUppercase);
+        root.dataset.uppercaseApplied = 'true';
+    }
+}
 
 // =====================================================
 // API HELPERS
@@ -455,8 +505,8 @@ async function saveStudy(event) {
     const payload = {
         materia_id:    materiaVal  ? parseInt(materiaVal)  : null,
         formacao_id:   formacaoVal ? parseInt(formacaoVal) : null,
-        unidade:       document.getElementById('unidade').value.trim() || null,
-        conteudo:      document.getElementById('conteudo').value.trim() || null,
+        unidade:       document.getElementById('unidade').value.trim().toUpperCase() || null,
+        conteudo:      document.getElementById('conteudo').value.trim().toUpperCase() || null,
         data_estudo:   document.getElementById('data_estudo').value || null,
         quantidade,
         total_acertos: acertos,
@@ -560,7 +610,6 @@ async function saveNewMateria() {
         closeNewMateriaModal();
         showToast(`Matéria "${nome}" criada!`, 'success');
         populateSelects();
-        // Seleciona automaticamente a nova matéria no formulário
         const sel = document.getElementById('materia');
         if (sel) sel.value = nova.id;
     } catch (err) {
@@ -589,7 +638,6 @@ async function saveNewFormacao() {
         closeNewFormacaoModal();
         showToast(`Formação "${nome}" criada!`, 'success');
         populateSelects();
-        // Seleciona automaticamente a nova formação no formulário
         const sel = document.getElementById('formacao');
         if (sel) sel.value = nova.id;
     } catch (err) {
