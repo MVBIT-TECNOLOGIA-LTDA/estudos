@@ -1,0 +1,641 @@
+// =====================================================
+// JORNADA ACADÊMICA — SCRIPT PRINCIPAL
+// =====================================================
+
+const API = '';  // vazio = mesmo host (serve estático pelo server.js)
+
+let state = {
+    studies:      [],
+    subjects:     [],   // matérias
+    formacoes:    [],   // formações
+    filterSubject: null,
+    filterFormacao: null,
+    filterStatus:  '',
+    searchTerm:    '',
+    currentMonth:  new Date(),
+    isLoading:     false
+};
+
+let editingId    = null;
+let deleteId     = null;
+let currentTab   = 0;
+const tabs       = ['tab-geral', 'tab-questoes'];
+
+// Variáveis globais usadas pelo calendar.js
+let currentMonth      = new Date();
+let currentDateFilter = null;
+let licitacoes        = [];  // alias para estudos (calendar.js referencia esta variável)
+
+// =====================================================
+// INICIALIZAÇÃO
+// =====================================================
+document.addEventListener('DOMContentLoaded', () => {
+    updateMonthDisplay();
+    setupConnectionStatus();
+    carregarTudo();
+    setInterval(checkConnection, 15000);
+});
+
+// =====================================================
+// API HELPERS
+// =====================================================
+async function apiFetch(path, options = {}) {
+    const res = await fetch(API + path, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options
+    });
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || res.statusText);
+    }
+    return res.json();
+}
+
+// =====================================================
+// CARREGAR DADOS
+// =====================================================
+async function carregarTudo() {
+    setLoading(true);
+    try {
+        const mes = state.currentMonth.getMonth() + 1;
+        const ano = state.currentMonth.getFullYear();
+
+        const [materias, formacoes, estudos] = await Promise.all([
+            apiFetch('/api/materias'),
+            apiFetch('/api/formacoes'),
+            apiFetch(`/api/estudos?mes=${mes}&ano=${ano}`)
+        ]);
+
+        state.subjects  = materias;
+        state.formacoes = formacoes;
+        state.studies   = estudos;
+
+        // Sincroniza alias para calendar.js
+        licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
+
+        atualizarInterface();
+        showToast('Dados atualizados', 'success');
+    } catch (err) {
+        showToast('Erro ao carregar dados: ' + err.message, 'error');
+    } finally {
+        setLoading(false);
+    }
+}
+
+function setLoading(v) {
+    state.isLoading = v;
+}
+
+// =====================================================
+// INTERFACE
+// =====================================================
+function atualizarInterface() {
+    populateSelects();
+    updateTable();
+    updateDashboard();
+}
+
+function populateSelects() {
+    // Select do formulário — matéria
+    const selMateria = document.getElementById('materia');
+    if (selMateria) {
+        const cur = selMateria.value;
+        selMateria.innerHTML = '<option value="">Selecione uma matéria</option>';
+        state.subjects.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.id; o.textContent = s.nome;
+            selMateria.appendChild(o);
+        });
+        selMateria.value = cur;
+    }
+
+    // Select do formulário — formação
+    const selFormacao = document.getElementById('formacao');
+    if (selFormacao) {
+        const cur = selFormacao.value;
+        selFormacao.innerHTML = '<option value="">Selecione uma formação</option>';
+        state.formacoes.forEach(f => {
+            const o = document.createElement('option');
+            o.value = f.id; o.textContent = f.nome;
+            selFormacao.appendChild(o);
+        });
+        selFormacao.value = cur;
+    }
+
+    // Filtro matéria
+    const fMateria = document.getElementById('filterMateria');
+    if (fMateria) {
+        const cur = fMateria.value;
+        fMateria.innerHTML = '<option value="">Todas Matérias</option>';
+        state.subjects.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.id; o.textContent = s.nome;
+            fMateria.appendChild(o);
+        });
+        fMateria.value = cur || state.filterSubject || '';
+    }
+
+    // Filtro formação
+    const fFormacao = document.getElementById('filterFormacao');
+    if (fFormacao) {
+        const cur = fFormacao.value;
+        fFormacao.innerHTML = '<option value="">Todas Formações</option>';
+        state.formacoes.forEach(f => {
+            const o = document.createElement('option');
+            o.value = f.id; o.textContent = f.nome;
+            fFormacao.appendChild(o);
+        });
+        fFormacao.value = cur || state.filterFormacao || '';
+    }
+}
+
+// =====================================================
+// FILTROS
+// =====================================================
+function filterStudies() {
+    state.searchTerm    = document.getElementById('search').value.trim().toLowerCase();
+    state.filterSubject = document.getElementById('filterMateria').value || null;
+    state.filterFormacao = document.getElementById('filterFormacao').value || null;
+    state.filterStatus  = document.getElementById('filterStatus').value;
+    updateTable();
+}
+
+// Chamada pelo calendar.js
+function filterLicitacoes() {
+    updateTable();
+}
+
+function changeMonth(direction) {
+    state.currentMonth.setMonth(state.currentMonth.getMonth() + direction);
+    currentMonth = state.currentMonth;
+    currentDateFilter = null;
+    updateMonthDisplay();
+    // recarrega estudos do novo mês
+    const mes = state.currentMonth.getMonth() + 1;
+    const ano = state.currentMonth.getFullYear();
+    apiFetch(`/api/estudos?mes=${mes}&ano=${ano}`)
+        .then(estudos => {
+            state.studies = estudos;
+            licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
+            updateTable();
+            updateDashboard();
+        })
+        .catch(err => showToast('Erro: ' + err.message, 'error'));
+}
+
+function updateMonthDisplay() {
+    const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const el = document.getElementById('currentMonth');
+    if (el) el.textContent = `${months[state.currentMonth.getMonth()]} ${state.currentMonth.getFullYear()}`;
+}
+
+// =====================================================
+// TABELA
+// =====================================================
+function updateTable() {
+    const tbody = document.getElementById('estudosTableBody');
+    if (!tbody) return;
+
+    let filtered = state.studies.filter(study => {
+        // Filtro por dia selecionado no calendário
+        if (currentDateFilter) {
+            if (study.data_estudo !== currentDateFilter) return false;
+        } else {
+            // Filtro por mês/ano
+            if (study.data_estudo) {
+                const [y, m] = study.data_estudo.split('-').map(Number);
+                if (m !== state.currentMonth.getMonth() + 1 || y !== state.currentMonth.getFullYear()) return false;
+            }
+        }
+
+        if (state.filterSubject  && study.materia_id  != state.filterSubject)  return false;
+        if (state.filterFormacao && study.formacao_id != state.filterFormacao)  return false;
+
+        if (state.searchTerm) {
+            const t = state.searchTerm;
+            const haystack = [
+                study.materia_nome || '',
+                study.formacao_nome || '',
+                study.conteudo || '',
+                study.unidade || ''
+            ].join(' ').toLowerCase();
+            if (!haystack.includes(t)) return false;
+        }
+
+        if (state.filterStatus) {
+            if (getStudyStatus(study) !== state.filterStatus) return false;
+        }
+
+        return true;
+    });
+
+    filtered.sort((a, b) => (a.data_estudo > b.data_estudo ? -1 : 1));
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhum estudo encontrado</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(study => {
+        const desempenho = study.quantidade > 0
+            ? ((study.total_acertos / study.quantidade) * 100).toFixed(0) + '%'
+            : '-';
+
+        const rowClass   = study.concluido ? 'row-fechada' : '';
+        const status     = getStudyStatus(study);
+        const statusClass = {
+            'finalizado':  'status-finalizado',
+            'fora-prazo':  'status-fora-prazo',
+            'programado':  'status-programado'
+        }[status] || 'status-programado';
+        const statusDisplay = status.replace('-', ' ').toUpperCase();
+
+        const materiaDisplay  = (study.materia_nome  || '-').toUpperCase();
+        const formacaoDisplay = (study.formacao_nome || '-').toUpperCase();
+        const unidadeDisplay  = study.unidade ? study.unidade.toUpperCase() : '-';
+        const conteudoDisplay = study.conteudo ? study.conteudo.toUpperCase() : '-';
+        const dataDisplay     = study.data_estudo
+            ? new Date(study.data_estudo + 'T00:00:00').toLocaleDateString('pt-BR')
+            : '-';
+
+        return `
+        <tr class="${rowClass}" data-id="${study.id}">
+            <td class="checkbox-col">
+                <div class="checkbox-wrapper">
+                    <input
+                        type="checkbox"
+                        id="check-${study.id}"
+                        ${study.concluido ? 'checked' : ''}
+                        onchange="toggleFinalizado('${study.id}', this.checked)"
+                        class="styled-checkbox"
+                    >
+                    <label for="check-${study.id}" class="checkbox-label-styled"></label>
+                </div>
+            </td>
+            <td>${materiaDisplay}</td>
+            <td>${formacaoDisplay}</td>
+            <td>${unidadeDisplay}</td>
+            <td>${conteudoDisplay}</td>
+            <td>${study.quantidade || '-'}</td>
+            <td>${desempenho}</td>
+            <td><span class="status-badge ${statusClass}">${statusDisplay}</span></td>
+            <td class="actions-cell">
+                <button onclick="editStudy('${study.id}')" class="action-btn edit">Editar</button>
+                <button onclick="openDeleteModal('${study.id}')" class="action-btn delete">Excluir</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function getStudyStatus(study) {
+    if (study.concluido) return 'finalizado';
+    if (!study.data_estudo) return 'programado';
+    const hoje = new Date().toISOString().split('T')[0];
+    if (study.data_estudo < hoje) return 'fora-prazo';
+    return 'programado';
+}
+
+// =====================================================
+// DASHBOARD
+// =====================================================
+function updateDashboard() {
+    const hoje = new Date().toISOString().split('T')[0];
+    const ms   = getStudiesForCurrentMonth();
+
+    const finalizados = ms.filter(s => s.concluido).length;
+    const foraPrazo   = ms.filter(s => !s.concluido && s.data_estudo && s.data_estudo < hoje).length;
+    const programados = ms.filter(s => !s.concluido && (!s.data_estudo || s.data_estudo >= hoje)).length;
+
+    document.getElementById('dashboardFinalizados').textContent = finalizados;
+    document.getElementById('dashboardForaPrazo').textContent   = foraPrazo;
+    document.getElementById('dashboardProgramados').textContent = programados;
+
+    atualizarPulseBadge(document.getElementById('cardForaPrazo'), foraPrazo);
+}
+
+function atualizarPulseBadge(card, count) {
+    if (!card) return;
+    let badge = card.querySelector('.pulse-badge');
+    if (count > 0) {
+        card.classList.add('has-alert');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.className = 'pulse-badge';
+            card.appendChild(badge);
+        }
+        badge.textContent = count;
+        badge.style.display = 'flex';
+    } else {
+        card.classList.remove('has-alert');
+        if (badge) badge.style.display = 'none';
+    }
+}
+
+function getStudiesForCurrentMonth() {
+    return state.studies.filter(s => {
+        if (!s.data_estudo) return false;
+        const [y, m] = s.data_estudo.split('-').map(Number);
+        return m === state.currentMonth.getMonth() + 1 && y === state.currentMonth.getFullYear();
+    });
+}
+
+// =====================================================
+// MODAIS DE DASHBOARD
+// =====================================================
+function abrirModalDashboard(tipo) {
+    const hoje = new Date().toISOString().split('T')[0];
+    const ms   = getStudiesForCurrentMonth();
+    let title, lista;
+
+    if (tipo === 'finalizados') {
+        title = 'Estudos Finalizados';
+        lista = ms.filter(s => s.concluido);
+    } else if (tipo === 'fora-prazo') {
+        title = 'Estudos Fora do Prazo';
+        lista = ms.filter(s => !s.concluido && s.data_estudo && s.data_estudo < hoje);
+    } else {
+        title = 'Estudos Programados';
+        lista = ms.filter(s => !s.concluido && (!s.data_estudo || s.data_estudo >= hoje));
+    }
+
+    if (lista.length === 0) { showToast('Nenhum item encontrado', 'error'); return; }
+
+    const body = document.getElementById('dashboardModalBody');
+    let html = '<table style="width:100%;"><thead><tr><th>Matéria</th><th>Formação</th><th>Conteúdo</th><th>Data</th></tr></thead><tbody>';
+    lista.forEach(item => {
+        html += `<tr>
+            <td>${(item.materia_nome  || '-').toUpperCase()}</td>
+            <td>${(item.formacao_nome || '-').toUpperCase()}</td>
+            <td>${(item.conteudo      || '-').toUpperCase()}</td>
+            <td>${item.data_estudo ? new Date(item.data_estudo + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    body.innerHTML = html;
+
+    document.getElementById('dashboardModalTitle').textContent = title;
+    document.getElementById('dashboardModal').classList.add('show');
+}
+
+function closeDashboardModal() {
+    document.getElementById('dashboardModal').classList.remove('show');
+}
+
+// =====================================================
+// FORMULÁRIO
+// =====================================================
+function toggleForm() {
+    editingId = null;
+    currentTab = 0;
+    document.getElementById('formTitle').textContent = 'Novo Estudo';
+    document.getElementById('studyForm').reset();
+    document.getElementById('editId').value = '';
+    const hoje = new Date().toISOString().split('T')[0];
+    document.getElementById('data_estudo').value = hoje;
+    populateSelects();
+    showTab(currentTab);
+    updateNavigationButtons();
+    document.getElementById('formModal').classList.add('show');
+}
+
+function closeFormModal(canceled = false) {
+    document.getElementById('formModal').classList.remove('show');
+    if (canceled) showToast('Operação cancelada', 'error');
+    editingId = null;
+}
+
+function editStudy(id) {
+    const study = state.studies.find(s => s.id == id);
+    if (!study) return;
+    editingId  = id;
+    currentTab = 0;
+
+    document.getElementById('formTitle').textContent = 'Editar Estudo';
+    document.getElementById('editId').value          = study.id;
+    populateSelects();
+    document.getElementById('materia').value         = study.materia_id  || '';
+    document.getElementById('formacao').value        = study.formacao_id || '';
+    document.getElementById('unidade').value         = study.unidade     || '';
+    document.getElementById('conteudo').value        = study.conteudo    || '';
+    document.getElementById('data_estudo').value     = study.data_estudo || '';
+    document.getElementById('quantidade').value      = study.quantidade  || '';
+    document.getElementById('total_acertos').value   = study.total_acertos || '';
+
+    showTab(currentTab);
+    updateNavigationButtons();
+    document.getElementById('formModal').classList.add('show');
+}
+
+async function saveStudy(event) {
+    event.preventDefault();
+
+    const materiaVal  = document.getElementById('materia').value;
+    const formacaoVal = document.getElementById('formacao').value;
+    const quantidade  = parseInt(document.getElementById('quantidade').value) || null;
+    const acertos     = parseInt(document.getElementById('total_acertos').value) || null;
+
+    if (quantidade && acertos !== null && acertos > quantidade) {
+        showToast('Acertos não podem ser maiores que a quantidade', 'error');
+        switchTab('tab-questoes');
+        return;
+    }
+
+    const payload = {
+        materia_id:    materiaVal  ? parseInt(materiaVal)  : null,
+        formacao_id:   formacaoVal ? parseInt(formacaoVal) : null,
+        unidade:       document.getElementById('unidade').value.trim() || null,
+        conteudo:      document.getElementById('conteudo').value.trim() || null,
+        data_estudo:   document.getElementById('data_estudo').value || null,
+        quantidade,
+        total_acertos: acertos,
+        concluido:     editingId ? (state.studies.find(s => s.id == editingId)?.concluido || false) : false,
+    };
+
+    try {
+        const editId = document.getElementById('editId').value;
+        let saved;
+        if (editId) {
+            saved = await apiFetch(`/api/estudos/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+            const idx = state.studies.findIndex(s => s.id == editId);
+            if (idx !== -1) state.studies[idx] = saved;
+        } else {
+            saved = await apiFetch('/api/estudos', { method: 'POST', body: JSON.stringify(payload) });
+            state.studies.push(saved);
+        }
+        licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
+        closeFormModal();
+        showToast(editId ? 'Estudo atualizado!' : 'Estudo cadastrado!', 'success');
+        atualizarInterface();
+    } catch (err) {
+        showToast('Erro ao salvar: ' + err.message, 'error');
+    }
+}
+
+// =====================================================
+// TOGGLE FINALIZADO
+// =====================================================
+async function toggleFinalizado(id, checked) {
+    const study = state.studies.find(s => s.id == id);
+    if (!study) return;
+
+    try {
+        const updated = await apiFetch(`/api/estudos/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ ...study, concluido: checked })
+        });
+        const idx = state.studies.findIndex(s => s.id == id);
+        if (idx !== -1) state.studies[idx] = updated;
+        licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
+        atualizarInterface();
+        showToast(checked ? 'Estudo finalizado!' : 'Estudo reaberto', 'success');
+    } catch (err) {
+        showToast('Erro: ' + err.message, 'error');
+        atualizarInterface(); // reverte visual
+    }
+}
+
+// =====================================================
+// ABAS
+// =====================================================
+function switchTab(tabId) {
+    const idx = tabs.indexOf(tabId);
+    if (idx !== -1) { currentTab = idx; showTab(currentTab); updateNavigationButtons(); }
+}
+
+function showTab(index) {
+    document.querySelectorAll('#formModal .tab-btn').forEach((b, i) =>
+        b.classList.toggle('active', i === index));
+    document.querySelectorAll('#formModal .tab-content').forEach((c, i) =>
+        c.classList.toggle('active', i === index));
+}
+
+function updateNavigationButtons() {
+    const btnPrev = document.getElementById('btnPrevious');
+    const btnNext = document.getElementById('btnNext');
+    const btnSave = document.getElementById('btnSave');
+    btnPrev.style.display = currentTab > 0 ? 'inline-flex' : 'none';
+    if (currentTab < tabs.length - 1) {
+        btnNext.style.display = 'inline-flex';
+        btnSave.style.display = 'none';
+    } else {
+        btnNext.style.display = 'none';
+        btnSave.style.display = 'inline-flex';
+    }
+}
+
+function nextTab()     { if (currentTab < tabs.length - 1) { currentTab++; showTab(currentTab); updateNavigationButtons(); } }
+function previousTab() { if (currentTab > 0)               { currentTab--; showTab(currentTab); updateNavigationButtons(); } }
+
+// =====================================================
+// GERENCIAR MATÉRIAS
+// =====================================================
+function openNewMateriaModal() {
+    document.getElementById('nomeMateria').value = '';
+    document.getElementById('newMateriaModal').classList.add('show');
+}
+
+function closeNewMateriaModal() {
+    document.getElementById('newMateriaModal').classList.remove('show');
+}
+
+async function saveNewMateria() {
+    const nome = document.getElementById('nomeMateria').value.trim().toUpperCase();
+    if (!nome) { showToast('Informe o nome da matéria', 'error'); return; }
+    try {
+        const nova = await apiFetch('/api/materias', { method: 'POST', body: JSON.stringify({ nome }) });
+        state.subjects.push(nova);
+        closeNewMateriaModal();
+        showToast(`Matéria "${nome}" criada!`, 'success');
+        populateSelects();
+        // Seleciona automaticamente a nova matéria no formulário
+        const sel = document.getElementById('materia');
+        if (sel) sel.value = nova.id;
+    } catch (err) {
+        showToast('Erro: ' + err.message, 'error');
+    }
+}
+
+// =====================================================
+// GERENCIAR FORMAÇÕES
+// =====================================================
+function openNewFormacaoModal() {
+    document.getElementById('nomeFormacao').value = '';
+    document.getElementById('newFormacaoModal').classList.add('show');
+}
+
+function closeNewFormacaoModal() {
+    document.getElementById('newFormacaoModal').classList.remove('show');
+}
+
+async function saveNewFormacao() {
+    const nome = document.getElementById('nomeFormacao').value.trim().toUpperCase();
+    if (!nome) { showToast('Informe o nome da formação', 'error'); return; }
+    try {
+        const nova = await apiFetch('/api/formacoes', { method: 'POST', body: JSON.stringify({ nome }) });
+        state.formacoes.push(nova);
+        closeNewFormacaoModal();
+        showToast(`Formação "${nome}" criada!`, 'success');
+        populateSelects();
+        // Seleciona automaticamente a nova formação no formulário
+        const sel = document.getElementById('formacao');
+        if (sel) sel.value = nova.id;
+    } catch (err) {
+        showToast('Erro: ' + err.message, 'error');
+    }
+}
+
+// =====================================================
+// EXCLUSÃO DE ESTUDO
+// =====================================================
+function openDeleteModal(id) {
+    deleteId = id;
+    document.getElementById('deleteMessage').textContent = 'Tem certeza que deseja excluir este estudo?';
+    document.getElementById('deleteModal').classList.add('show');
+}
+
+function closeDeleteModal() {
+    document.getElementById('deleteModal').classList.remove('show');
+    deleteId = null;
+}
+
+async function confirmDelete() {
+    if (!deleteId) return;
+    try {
+        await apiFetch(`/api/estudos/${deleteId}`, { method: 'DELETE' });
+        state.studies = state.studies.filter(s => s.id != deleteId);
+        licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
+        showToast('Estudo excluído!', 'success');
+        atualizarInterface();
+    } catch (err) {
+        showToast('Erro: ' + err.message, 'error');
+    }
+    closeDeleteModal();
+}
+
+// =====================================================
+// UTILITÁRIOS
+// =====================================================
+function showToast(message, type = 'success') {
+    document.querySelectorAll('.floating-message').forEach(m => m.remove());
+    const div = document.createElement('div');
+    div.className = `floating-message ${type}`;
+    div.textContent = message;
+    document.body.appendChild(div);
+    setTimeout(() => {
+        div.style.animation = 'slideOutBottom 0.3s ease forwards';
+        setTimeout(() => div.remove(), 300);
+    }, 3000);
+}
+
+function setupConnectionStatus() {
+    checkConnection();
+    window.addEventListener('online',  checkConnection);
+    window.addEventListener('offline', checkConnection);
+}
+
+function checkConnection() {
+    const el = document.getElementById('connectionStatus');
+    if (!el) return;
+    el.className = 'connection-status ' + (navigator.onLine ? 'online' : 'offline');
+}
