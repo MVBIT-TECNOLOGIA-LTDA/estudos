@@ -27,7 +27,7 @@
                 </button>
             </div>
 
-            <!-- Dashboard Cards (4 cards) -->
+            <!-- Dashboard Cards -->
             <div class="dashboard-grid">
                 <div class="stat-card" onclick="abrirModalDashboard('finalizados')" style="cursor:pointer;">
                     <div class="stat-icon stat-icon-success">
@@ -178,10 +178,11 @@
                     </div>
                 </div>
             </div>
+
         </div>
     </div>
 
-    <!-- MODAL CALENDÁRIO (dias) -->
+    <!-- MODAL CALENDÁRIO -->
     <div class="calendar-modal" id="calendarModal">
         <div class="calendar-content">
             <div class="calendar-header">
@@ -227,7 +228,6 @@
                     <div class="tab-content active" id="tab-geral">
                         <div class="form-grid">
 
-                            <!-- Formação com botão + (vem primeiro) -->
                             <div class="form-group">
                                 <label for="formacao">Formação</label>
                                 <div class="input-with-btn">
@@ -243,7 +243,6 @@
                                 </div>
                             </div>
 
-                            <!-- Matéria com botão + -->
                             <div class="form-group">
                                 <label for="materia">Matéria</label>
                                 <div class="input-with-btn">
@@ -290,6 +289,8 @@
 
                     <!-- Aba Revisão -->
                     <div class="tab-content" id="tab-revisao">
+                        <!-- Hint de revisão obrigatória — exibido pelo JS quando desempenho < 85% -->
+                        <div class="hint-revisao" id="hintRevisao"></div>
                         <div class="form-grid">
                             <div class="form-group">
                                 <label for="data_revisao">Data de Revisão</label>
