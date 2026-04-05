@@ -265,20 +265,28 @@ function updateMonthDisplay() {
 // =====================================================
 // REGRAS DE NEGÓCIO
 // =====================================================
+
+// Todo estudo pode ser marcado como concluído,
+// independentemente de ter questões registradas.
 function podeMarcarConcluido(study) {
-    return study.quantidade && parseInt(study.quantidade) > 0;
+    return true;
 }
 
+// Retorna 100 quando não há questões registradas.
+// O desempenho só é calculado de verdade após o registro de questões.
 function calcularDesempenho(study) {
     const qtd     = parseInt(study.quantidade)    || 0;
     const acertos = parseInt(study.total_acertos) || 0;
-    if (qtd <= 0) return null;
+    if (qtd <= 0) return 100;
     return (acertos / qtd) * 100;
 }
 
+// Revisão só é exigida quando há questões e o desempenho for < 85%.
 function exigeRevisao(study) {
+    const qtd = parseInt(study.quantidade) || 0;
+    if (qtd <= 0) return false;
     const desempenho = calcularDesempenho(study);
-    return desempenho !== null && desempenho < 85;
+    return desempenho < 85;
 }
 
 // =====================================================
@@ -327,8 +335,8 @@ function updateTable() {
         return true;
     });
 
-filtered.sort((a, b) => a.id - b.id);
-    
+    filtered.sort((a, b) => a.id - b.id);
+
     if (filtered.length === 0) {
         const msg = currentDateFilter
             ? `Nenhum estudo programado para ${formatDateBR(currentDateFilter)}.`
@@ -338,9 +346,11 @@ filtered.sort((a, b) => a.id - b.id);
     }
 
     tbody.innerHTML = filtered.map(study => {
-        const desempenhoNum = calcularDesempenho(study);
-        const desempenhoStr = desempenhoNum !== null ? desempenhoNum.toFixed(0) + '%' : '-';
-        const desempenhoColor = desempenhoNum === null ? ''
+        const semQuestoes    = !study.quantidade || parseInt(study.quantidade) <= 0;
+        const desempenhoNum  = calcularDesempenho(study);
+        const desempenhoStr  = semQuestoes ? '100%' : desempenhoNum.toFixed(0) + '%';
+        const desempenhoColor = semQuestoes
+            ? 'style="color:#16a34a;"'
             : desempenhoNum < 85
                 ? 'style="color:#dc2626;font-weight:700;"'
                 : 'style="color:#16a34a;font-weight:700;"';
@@ -359,27 +369,19 @@ filtered.sort((a, b) => a.id - b.id);
         const formacaoDisplay = (study.formacao_nome || '-').toUpperCase();
         const unidadeDisplay  = study.unidade  ? study.unidade.toUpperCase()  : '-';
         const conteudoDisplay = study.conteudo ? study.conteudo.toUpperCase() : '-';
-        const dataDisplay     = study.data_estudo ? formatDateBR(study.data_estudo) : '-';
-
-        const temQuestoes   = podeMarcarConcluido(study);
-        const checkDisabled = temQuestoes ? '' : 'disabled';
-        const checkTitle    = temQuestoes
-            ? 'Marcar como concluído'
-            : 'Registre questões antes de marcar como concluído';
 
         return `
         <tr class="${rowClass}" data-id="${study.id}">
             <td class="checkbox-col">
-                <div class="checkbox-wrapper" title="${checkTitle}">
+                <div class="checkbox-wrapper" title="Marcar como concluído">
                     <input
                         type="checkbox"
                         id="check-${study.id}"
                         ${study.concluido ? 'checked' : ''}
-                        ${checkDisabled}
                         onchange="toggleFinalizado('${study.id}', this.checked)"
                         class="styled-checkbox"
                     >
-                    <label for="check-${study.id}" class="checkbox-label-styled ${!temQuestoes ? 'checkbox-disabled' : ''}"></label>
+                    <label for="check-${study.id}" class="checkbox-label-styled"></label>
                 </div>
             </td>
             <td>${formacaoDisplay}</td>
@@ -649,13 +651,8 @@ async function toggleFinalizado(id, checked) {
     const study = state.studies.find(s => s.id == id);
     if (!study) return;
 
-    if (checked && !podeMarcarConcluido(study)) {
-        showToast('Registre pelo menos 1 questão antes de marcar como concluído.', 'error');
-        const chk = document.getElementById(`check-${id}`);
-        if (chk) chk.checked = false;
-        return;
-    }
-
+    // Bloqueia conclusão apenas se houver questões registradas
+    // com desempenho abaixo de 85% e sem data de revisão informada.
     if (checked && exigeRevisao(study) && (!study.data_revisao || !study.data_revisao.trim())) {
         const desempenho = calcularDesempenho(study).toFixed(0);
         showToast(`Desempenho de ${desempenho}% — informe uma data de revisão antes de concluir.`, 'error');
@@ -759,7 +756,7 @@ async function saveNewFormacao() {
         const nova = await apiFetch('/api/formacoes', { method: 'POST', body: JSON.stringify({ nome }) });
         state.formacoes.push(nova);
         closeNewFormacaoModal();
-        showToast(`Formação "${nome}" criada!`, 'success');
+        showToast(`Formação "${nova.nome}" criada!`, 'success');
         populateSelects();
         const sel = document.getElementById('formacao');
         if (sel) sel.value = nova.id;
