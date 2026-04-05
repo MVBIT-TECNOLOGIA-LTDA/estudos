@@ -1137,3 +1137,45 @@ button.small                        { padding: 8px 12px; font-size: 0.85rem; }
 @media (max-width: 500px) {
     .dashboard-grid { grid-template-columns: 1fr; }
 }
+
+/* =====================================================
+   INDICADOR DE FILTRO DE DATA ATIVO
+   ===================================================== */
+.active-date-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: rgba(255, 82, 29, 0.08);
+    border: 1px solid rgba(255, 82, 29, 0.3);
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem;
+    height: 38px;
+}
+
+.active-date-badge {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--primary);
+    white-space: nowrap;
+}
+
+.clear-date-btn {
+    background: transparent !important;
+    border: none !important;
+    color: var(--primary) !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    line-height: 1 !important;
+    min-width: unset !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: opacity 0.2s ease !important;
+}
+
+.clear-date-btn:hover {
+    opacity: 0.6 !important;
+    transform: none !important;
+}
