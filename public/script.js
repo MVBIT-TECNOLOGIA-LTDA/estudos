@@ -2,12 +2,12 @@
 // JORNADA ACADÊMICA — SCRIPT PRINCIPAL
 // =====================================================
 
-const API = '';  // vazio = mesmo host (serve estático pelo server.js)
+const API = '';
 
 let state = {
     studies:       [],
-    subjects:      [],   // matérias
-    formacoes:     [],   // formações
+    subjects:      [],
+    formacoes:     [],
     filterSubject:  null,
     filterFormacao: null,
     filterStatus:   '',
@@ -21,21 +21,28 @@ let deleteId     = null;
 let currentTab   = 0;
 const tabs       = ['tab-geral', 'tab-questoes', 'tab-revisao'];
 
-// Variáveis globais usadas pelo calendar.js
 let currentMonth      = new Date();
 let currentDateFilter = null;
-let licitacoes        = [];  // alias para estudos (calendar.js referencia esta variável)
+let licitacoes        = [];
 
 // =====================================================
 // INICIALIZAÇÃO
 // =====================================================
 document.addEventListener('DOMContentLoaded', () => {
+    // Define o filtro padrão como hoje
+    currentDateFilter = getTodayString();
+
     updateMonthDisplay();
     setupConnectionStatus();
     setupUppercaseInputs();
     carregarTudo();
     setInterval(checkConnection, 15000);
 });
+
+// Retorna a data de hoje no formato YYYY-MM-DD
+function getTodayString() {
+    return new Date().toISOString().split('T')[0];
+}
 
 // =====================================================
 // FORÇAR CAIXA ALTA EM INPUTS DE TEXTO
@@ -131,6 +138,7 @@ function atualizarInterface() {
     populateSelects();
     updateTable();
     updateDashboard();
+    updateDateFilterDisplay();
 }
 
 function populateSelects() {
@@ -184,6 +192,33 @@ function populateSelects() {
 }
 
 // =====================================================
+// EXIBE O DIA ATIVO NO DISPLAY DE FILTRO DE DATA
+// =====================================================
+function updateDateFilterDisplay() {
+    const el = document.getElementById('activeDateFilter');
+    if (!el) return;
+
+    if (currentDateFilter) {
+        const [y, m, d] = currentDateFilter.split('-').map(Number);
+        const data = new Date(y, m - 1, d);
+        const hoje = getTodayString();
+        const label = currentDateFilter === hoje ? 'Hoje' : data.toLocaleDateString('pt-BR');
+        el.textContent = label;
+        el.style.display = 'inline-flex';
+    } else {
+        el.textContent = 'Todo o mês';
+        el.style.display = 'inline-flex';
+    }
+}
+
+// Limpa o filtro de dia — exibe todos do mês
+function clearDateFilter() {
+    currentDateFilter = null;
+    updateTable();
+    updateDateFilterDisplay();
+}
+
+// =====================================================
 // FILTROS
 // =====================================================
 function filterStudies() {
@@ -201,8 +236,13 @@ function filterLicitacoes() {
 function changeMonth(direction) {
     state.currentMonth.setMonth(state.currentMonth.getMonth() + direction);
     currentMonth = state.currentMonth;
+
+    // Ao mudar de mês, limpa o filtro de dia para mostrar todo o mês
     currentDateFilter = null;
+
     updateMonthDisplay();
+    updateDateFilterDisplay();
+
     const mes = state.currentMonth.getMonth() + 1;
     const ano = state.currentMonth.getFullYear();
     apiFetch(`/api/estudos?mes=${mes}&ano=${ano}`)
@@ -225,19 +265,10 @@ function updateMonthDisplay() {
 // =====================================================
 // REGRAS DE NEGÓCIO
 // =====================================================
-
-/**
- * Verifica se um estudo pode ser marcado como concluído.
- * Regra: só permite se tiver ao menos 1 questão registrada.
- */
 function podeMarcarConcluido(study) {
     return study.quantidade && parseInt(study.quantidade) > 0;
 }
 
-/**
- * Calcula o desempenho percentual de um estudo (0–100).
- * Retorna null se não houver questões.
- */
 function calcularDesempenho(study) {
     const qtd     = parseInt(study.quantidade)    || 0;
     const acertos = parseInt(study.total_acertos) || 0;
@@ -245,10 +276,6 @@ function calcularDesempenho(study) {
     return (acertos / qtd) * 100;
 }
 
-/**
- * Verifica se o estudo exige data de revisão.
- * Regra: desempenho existente e abaixo de 85%.
- */
 function exigeRevisao(study) {
     const desempenho = calcularDesempenho(study);
     return desempenho !== null && desempenho < 85;
@@ -256,18 +283,27 @@ function exigeRevisao(study) {
 
 // =====================================================
 // TABELA
+// Exibe por padrão apenas os estudos do dia filtrado.
+// Se currentDateFilter for null, exibe todos do mês.
 // =====================================================
 function updateTable() {
     const tbody = document.getElementById('estudosTableBody');
     if (!tbody) return;
 
     let filtered = state.studies.filter(study => {
+
+        // ── Filtro principal de data ──
         if (currentDateFilter) {
+            // Mostra apenas o dia selecionado/hoje
             if (study.data_estudo !== currentDateFilter) return false;
         } else {
+            // Sem filtro de dia: mostra todos do mês carregado
             if (study.data_estudo) {
                 const [y, m] = study.data_estudo.split('-').map(Number);
-                if (m !== state.currentMonth.getMonth() + 1 || y !== state.currentMonth.getFullYear()) return false;
+                if (
+                    m !== state.currentMonth.getMonth() + 1 ||
+                    y !== state.currentMonth.getFullYear()
+                ) return false;
             }
         }
 
@@ -294,19 +330,17 @@ function updateTable() {
     filtered.sort((a, b) => (a.data_estudo > b.data_estudo ? -1 : 1));
 
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhum estudo encontrado</td></tr>';
+        const msg = currentDateFilter
+            ? `Nenhum estudo programado para ${formatDateBR(currentDateFilter)}.`
+            : 'Nenhum estudo encontrado.';
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-secondary);">${msg}</td></tr>`;
         return;
     }
 
     tbody.innerHTML = filtered.map(study => {
         const desempenhoNum = calcularDesempenho(study);
-        const desempenhoStr = desempenhoNum !== null
-            ? desempenhoNum.toFixed(0) + '%'
-            : '-';
-
-        // Cor do desempenho: vermelho < 85%, verde >= 85%
-        const desempenhoColor = desempenhoNum === null
-            ? ''
+        const desempenhoStr = desempenhoNum !== null ? desempenhoNum.toFixed(0) + '%' : '-';
+        const desempenhoColor = desempenhoNum === null ? ''
             : desempenhoNum < 85
                 ? 'style="color:#dc2626;font-weight:700;"'
                 : 'style="color:#16a34a;font-weight:700;"';
@@ -325,12 +359,9 @@ function updateTable() {
         const formacaoDisplay = (study.formacao_nome || '-').toUpperCase();
         const unidadeDisplay  = study.unidade  ? study.unidade.toUpperCase()  : '-';
         const conteudoDisplay = study.conteudo ? study.conteudo.toUpperCase() : '-';
-        const dataDisplay     = study.data_estudo
-            ? new Date(study.data_estudo + 'T00:00:00').toLocaleDateString('pt-BR')
-            : '-';
+        const dataDisplay     = study.data_estudo ? formatDateBR(study.data_estudo) : '-';
 
-        // Checkbox: desabilitado se não tiver questões
-        const temQuestoes  = podeMarcarConcluido(study);
+        const temQuestoes   = podeMarcarConcluido(study);
         const checkDisabled = temQuestoes ? '' : 'disabled';
         const checkTitle    = temQuestoes
             ? 'Marcar como concluído'
@@ -366,20 +397,25 @@ function updateTable() {
     }).join('');
 }
 
+function formatDateBR(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
+}
+
 function getStudyStatus(study) {
     if (study.concluido) return 'finalizado';
     if (!study.data_estudo) return 'programado';
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = getTodayString();
     if (study.data_estudo < hoje) return 'fora-prazo';
     if (study.data_revisao && study.data_revisao.trim() !== '') return 'revisao';
     return 'programado';
 }
 
 // =====================================================
-// DASHBOARD
+// DASHBOARD — sempre considera o mês inteiro
 // =====================================================
 function updateDashboard() {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = getTodayString();
     const ms   = getStudiesForCurrentMonth();
 
     const finalizados = ms.filter(s => s.concluido).length;
@@ -426,7 +462,7 @@ function getStudiesForCurrentMonth() {
 // MODAIS DE DASHBOARD
 // =====================================================
 function abrirModalDashboard(tipo) {
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = getTodayString();
     const ms   = getStudiesForCurrentMonth();
     let title, lista;
 
@@ -450,8 +486,8 @@ function abrirModalDashboard(tipo) {
     let html = '<table style="width:100%;"><thead><tr><th>Formação</th><th>Matéria</th><th>Conteúdo</th><th>Data</th></tr></thead><tbody>';
     lista.forEach(item => {
         const dataExibir = tipo === 'revisao'
-            ? (item.data_revisao ? new Date(item.data_revisao + 'T00:00:00').toLocaleDateString('pt-BR') : '-')
-            : (item.data_estudo  ? new Date(item.data_estudo  + 'T00:00:00').toLocaleDateString('pt-BR') : '-');
+            ? (item.data_revisao ? formatDateBR(item.data_revisao) : '-')
+            : (item.data_estudo  ? formatDateBR(item.data_estudo)  : '-');
         html += `<tr>
             <td>${(item.formacao_nome || '-').toUpperCase()}</td>
             <td>${(item.materia_nome  || '-').toUpperCase()}</td>
@@ -479,7 +515,7 @@ function toggleForm() {
     document.getElementById('formTitle').textContent = 'Novo Estudo';
     document.getElementById('studyForm').reset();
     document.getElementById('editId').value = '';
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = getTodayString();
     document.getElementById('data_estudo').value = hoje;
     populateSelects();
     setupFormListeners();
@@ -500,17 +536,17 @@ function editStudy(id) {
     editingId  = id;
     currentTab = 0;
 
-    document.getElementById('formTitle').textContent     = 'Editar Estudo';
-    document.getElementById('editId').value              = study.id;
+    document.getElementById('formTitle').textContent   = 'Editar Estudo';
+    document.getElementById('editId').value            = study.id;
     populateSelects();
-    document.getElementById('materia').value             = study.materia_id      || '';
-    document.getElementById('formacao').value            = study.formacao_id     || '';
-    document.getElementById('unidade').value             = study.unidade         || '';
-    document.getElementById('conteudo').value            = study.conteudo        || '';
-    document.getElementById('data_estudo').value         = study.data_estudo     || '';
-    document.getElementById('quantidade').value          = study.quantidade      || '';
-    document.getElementById('total_acertos').value       = study.total_acertos   || '';
-    document.getElementById('data_revisao').value        = study.data_revisao    || '';
+    document.getElementById('materia').value           = study.materia_id    || '';
+    document.getElementById('formacao').value          = study.formacao_id   || '';
+    document.getElementById('unidade').value           = study.unidade       || '';
+    document.getElementById('conteudo').value          = study.conteudo      || '';
+    document.getElementById('data_estudo').value       = study.data_estudo   || '';
+    document.getElementById('quantidade').value        = study.quantidade    || '';
+    document.getElementById('total_acertos').value     = study.total_acertos || '';
+    document.getElementById('data_revisao').value      = study.data_revisao  || '';
 
     setupFormListeners();
     atualizarHintRevisao();
@@ -519,21 +555,13 @@ function editStudy(id) {
     document.getElementById('formModal').classList.add('show');
 }
 
-// ─────────────────────────────────────────────────────
-// Listeners internos do formulário:
-// atualiza o hint de revisão ao mudar questões/acertos
-// ─────────────────────────────────────────────────────
 function setupFormListeners() {
-    const elQtd     = document.getElementById('quantidade');
-    const elAcertos = document.getElementById('total_acertos');
-    if (elQtd)     elQtd.addEventListener('input',     atualizarHintRevisao);
-    if (elAcertos) elAcertos.addEventListener('input',  atualizarHintRevisao);
+    ['quantidade', 'total_acertos'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', atualizarHintRevisao);
+    });
 }
 
-/**
- * Exibe (ou oculta) o aviso de revisão obrigatória na aba Revisão
- * e destaca o campo de data_revisao quando necessário.
- */
 function atualizarHintRevisao() {
     const qtd     = parseInt(document.getElementById('quantidade')?.value)    || 0;
     const acertos = parseInt(document.getElementById('total_acertos')?.value) || 0;
@@ -549,16 +577,12 @@ function atualizarHintRevisao() {
             hintEl.textContent   = `⚠️ Desempenho de ${desempenho.toFixed(0)}% — revisão obrigatória (mínimo 85%).`;
             dataEl.classList.add('input-required-highlight');
             dataEl.required = true;
-        } else {
-            hintEl.style.display = 'none';
-            dataEl.classList.remove('input-required-highlight');
-            dataEl.required = false;
+            return;
         }
-    } else {
-        hintEl.style.display = 'none';
-        dataEl.classList.remove('input-required-highlight');
-        dataEl.required = false;
     }
+    hintEl.style.display = 'none';
+    dataEl.classList.remove('input-required-highlight');
+    dataEl.required = false;
 }
 
 async function saveStudy(event) {
@@ -570,14 +594,12 @@ async function saveStudy(event) {
     const acertos     = parseInt(document.getElementById('total_acertos').value) || null;
     const dataRevisao = document.getElementById('data_revisao').value            || null;
 
-    // ── Validação 1: acertos não podem exceder quantidade ──
     if (quantidade && acertos !== null && acertos > quantidade) {
         showToast('Acertos não podem ser maiores que a quantidade de questões.', 'error');
         switchTab('tab-questoes');
         return;
     }
 
-    // ── Validação 2: revisão obrigatória se desempenho < 85% ──
     if (quantidade && acertos !== null) {
         const desempenho = (acertos / quantidade) * 100;
         if (desempenho < 85 && !dataRevisao) {
@@ -622,22 +644,18 @@ async function saveStudy(event) {
 
 // =====================================================
 // TOGGLE FINALIZADO
-// Regra: só permite marcar se houver questões registradas
 // =====================================================
 async function toggleFinalizado(id, checked) {
     const study = state.studies.find(s => s.id == id);
     if (!study) return;
 
-    // Bloqueia se não tiver questões
     if (checked && !podeMarcarConcluido(study)) {
         showToast('Registre pelo menos 1 questão antes de marcar como concluído.', 'error');
-        // Reverte o checkbox visualmente
         const chk = document.getElementById(`check-${id}`);
         if (chk) chk.checked = false;
         return;
     }
 
-    // Bloqueia se tiver desempenho < 85% sem data de revisão
     if (checked && exigeRevisao(study) && (!study.data_revisao || !study.data_revisao.trim())) {
         const desempenho = calcularDesempenho(study).toFixed(0);
         showToast(`Desempenho de ${desempenho}% — informe uma data de revisão antes de concluir.`, 'error');
