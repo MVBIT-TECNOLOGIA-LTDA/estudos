@@ -327,8 +327,8 @@ function updateTable() {
         return true;
     });
 
-    // DEPOIS
-filtered.sort((a, b) => (a.data_estudo > b.data_estudo ? 1 : -1));
+filtered.sort((a, b) => a.id - b.id);
+    
     if (filtered.length === 0) {
         const msg = currentDateFilter
             ? `Nenhum estudo programado para ${formatDateBR(currentDateFilter)}.`
