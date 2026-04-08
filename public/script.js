@@ -2,6 +2,8 @@
 // JORNADA ACADÊMICA — SCRIPT PRINCIPAL
 // =====================================================
 
+// Deixe vazio para produção (mesmo host) ou defina
+// 'http://localhost:3000' para dev com front separado.
 const API = '';
 
 let state = {
@@ -41,7 +43,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Retorna a data de hoje no formato YYYY-MM-DD
 function getTodayString() {
-    return new Date().toISOString().split('T')[0];
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
 // =====================================================
@@ -86,15 +92,24 @@ function applyUppercaseToExisting(root) {
 // API HELPERS
 // =====================================================
 async function apiFetch(path, options = {}) {
-    const res = await fetch(API + path, {
-        headers: { 'Content-Type': 'application/json' },
-        ...options
-    });
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || res.statusText);
+    const url = API + path;
+    try {
+        const res = await fetch(url, {
+            headers: { 'Content-Type': 'application/json' },
+            ...options
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: res.statusText }));
+            throw new Error(err.error || res.statusText);
+        }
+        return res.json();
+    } catch (err) {
+        // Enriquece a mensagem de rede para facilitar o diagnóstico
+        if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+            throw new Error(`Não foi possível conectar ao servidor (${url}). Verifique se o servidor está rodando.`);
+        }
+        throw err;
     }
-    return res.json();
 }
 
 // =====================================================
@@ -122,6 +137,7 @@ async function carregarTudo() {
         showToast('Dados atualizados', 'success');
     } catch (err) {
         showToast('Erro ao carregar dados: ' + err.message, 'error');
+        console.error('[carregarTudo]', err);
     } finally {
         setLoading(false);
     }
@@ -129,6 +145,9 @@ async function carregarTudo() {
 
 function setLoading(v) {
     state.isLoading = v;
+    // Indicador visual de carregamento (se existir no HTML)
+    const el = document.getElementById('loadingIndicator');
+    if (el) el.style.display = v ? 'flex' : 'none';
 }
 
 // =====================================================
@@ -200,13 +219,15 @@ function updateDateFilterDisplay() {
 
     if (currentDateFilter) {
         const [y, m, d] = currentDateFilter.split('-').map(Number);
-        const data = new Date(y, m - 1, d);
-        const hoje = getTodayString();
-        const label = currentDateFilter === hoje ? 'Hoje' : data.toLocaleDateString('pt-BR');
+        const data  = new Date(y, m - 1, d);
+        const hoje  = getTodayString();
+        const label = currentDateFilter === hoje
+            ? 'Hoje'
+            : data.toLocaleDateString('pt-BR');
         el.textContent = label;
         el.style.display = 'inline-flex';
     } else {
-        el.textContent = 'Todo o mês';
+        el.textContent   = 'Todo o mês';
         el.style.display = 'inline-flex';
     }
 }
@@ -222,10 +243,10 @@ function clearDateFilter() {
 // FILTROS
 // =====================================================
 function filterStudies() {
-    state.searchTerm     = document.getElementById('search').value.trim().toLowerCase();
-    state.filterSubject  = document.getElementById('filterMateria').value || null;
-    state.filterFormacao = document.getElementById('filterFormacao').value || null;
-    state.filterStatus   = document.getElementById('filterStatus').value;
+    state.searchTerm     = (document.getElementById('search')?.value || '').trim().toLowerCase();
+    state.filterSubject  = document.getElementById('filterMateria')?.value || null;
+    state.filterFormacao = document.getElementById('filterFormacao')?.value || null;
+    state.filterStatus   = document.getElementById('filterStatus')?.value || '';
     updateTable();
 }
 
@@ -245,6 +266,7 @@ function changeMonth(direction) {
 
     const mes = state.currentMonth.getMonth() + 1;
     const ano = state.currentMonth.getFullYear();
+
     apiFetch(`/api/estudos?mes=${mes}&ano=${ano}`)
         .then(estudos => {
             state.studies = estudos;
@@ -252,7 +274,10 @@ function changeMonth(direction) {
             updateTable();
             updateDashboard();
         })
-        .catch(err => showToast('Erro: ' + err.message, 'error'));
+        .catch(err => {
+            showToast('Erro ao carregar mês: ' + err.message, 'error');
+            console.error('[changeMonth]', err);
+        });
 }
 
 function updateMonthDisplay() {
@@ -273,7 +298,6 @@ function podeMarcarConcluido(study) {
 }
 
 // Retorna 100 quando não há questões registradas.
-// O desempenho só é calculado de verdade após o registro de questões.
 function calcularDesempenho(study) {
     const qtd     = parseInt(study.quantidade)    || 0;
     const acertos = parseInt(study.total_acertos) || 0;
@@ -281,18 +305,15 @@ function calcularDesempenho(study) {
     return (acertos / qtd) * 100;
 }
 
-// Revisão só é exigida quando há questões e o desempenho for < 85%.
+// Revisão só é exigida quando há questões e desempenho < 85%.
 function exigeRevisao(study) {
     const qtd = parseInt(study.quantidade) || 0;
     if (qtd <= 0) return false;
-    const desempenho = calcularDesempenho(study);
-    return desempenho < 85;
+    return calcularDesempenho(study) < 85;
 }
 
 // =====================================================
 // TABELA
-// Exibe por padrão apenas os estudos do dia filtrado.
-// Se currentDateFilter for null, exibe todos do mês.
 // =====================================================
 function updateTable() {
     const tbody = document.getElementById('estudosTableBody');
@@ -300,12 +321,10 @@ function updateTable() {
 
     let filtered = state.studies.filter(study => {
 
-        // ── Filtro principal de data ──
+        // ── Filtro de data ──
         if (currentDateFilter) {
-            // Mostra apenas o dia selecionado/hoje
             if (study.data_estudo !== currentDateFilter) return false;
         } else {
-            // Sem filtro de dia: mostra todos do mês carregado
             if (study.data_estudo) {
                 const [y, m] = study.data_estudo.split('-').map(Number);
                 if (
@@ -341,14 +360,19 @@ function updateTable() {
         const msg = currentDateFilter
             ? `Nenhum estudo programado para ${formatDateBR(currentDateFilter)}.`
             : 'Nenhum estudo encontrado.';
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-secondary);">${msg}</td></tr>`;
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" style="text-align:center;padding:2rem;color:var(--text-secondary);">
+                    ${msg}
+                </td>
+            </tr>`;
         return;
     }
 
     tbody.innerHTML = filtered.map(study => {
-        const semQuestoes    = !study.quantidade || parseInt(study.quantidade) <= 0;
-        const desempenhoNum  = calcularDesempenho(study);
-        const desempenhoStr  = semQuestoes ? '100%' : desempenhoNum.toFixed(0) + '%';
+        const semQuestoes     = !study.quantidade || parseInt(study.quantidade) <= 0;
+        const desempenhoNum   = calcularDesempenho(study);
+        const desempenhoStr   = semQuestoes ? '100%' : desempenhoNum.toFixed(0) + '%';
         const desempenhoColor = semQuestoes
             ? 'style="color:#16a34a;"'
             : desempenhoNum < 85
@@ -400,6 +424,7 @@ function updateTable() {
 }
 
 function formatDateBR(dateStr) {
+    if (!dateStr) return '-';
     const [y, m, d] = dateStr.split('-').map(Number);
     return new Date(y, m - 1, d).toLocaleDateString('pt-BR');
 }
@@ -425,10 +450,11 @@ function updateDashboard() {
     const programados = ms.filter(s => !s.concluido && (!s.data_estudo || s.data_estudo >= hoje) && !(s.data_revisao && s.data_revisao.trim())).length;
     const revisao     = ms.filter(s => s.data_revisao && s.data_revisao.trim() !== '').length;
 
-    document.getElementById('dashboardFinalizados').textContent = finalizados;
-    document.getElementById('dashboardForaPrazo').textContent   = foraPrazo;
-    document.getElementById('dashboardProgramados').textContent = programados;
-    document.getElementById('dashboardRevisao').textContent     = revisao;
+    const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setEl('dashboardFinalizados', finalizados);
+    setEl('dashboardForaPrazo',   foraPrazo);
+    setEl('dashboardProgramados', programados);
+    setEl('dashboardRevisao',     revisao);
 
     atualizarPulseBadge(document.getElementById('cardForaPrazo'), foraPrazo);
     atualizarPulseBadge(document.getElementById('cardRevisao'),   revisao);
@@ -444,8 +470,8 @@ function atualizarPulseBadge(card, count) {
             badge.className = 'pulse-badge';
             card.appendChild(badge);
         }
-        badge.textContent = count;
-        badge.style.display = 'flex';
+        badge.textContent    = count;
+        badge.style.display  = 'flex';
     } else {
         card.classList.remove('has-alert');
         if (badge) badge.style.display = 'none';
@@ -485,17 +511,28 @@ function abrirModalDashboard(tipo) {
     if (lista.length === 0) { showToast('Nenhum item encontrado', 'error'); return; }
 
     const body = document.getElementById('dashboardModalBody');
-    let html = '<table style="width:100%;"><thead><tr><th>Formação</th><th>Matéria</th><th>Conteúdo</th><th>Data</th></tr></thead><tbody>';
+    let html = `
+        <table style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Formação</th>
+                    <th>Matéria</th>
+                    <th>Conteúdo</th>
+                    <th>Data</th>
+                </tr>
+            </thead>
+            <tbody>`;
     lista.forEach(item => {
         const dataExibir = tipo === 'revisao'
-            ? (item.data_revisao ? formatDateBR(item.data_revisao) : '-')
-            : (item.data_estudo  ? formatDateBR(item.data_estudo)  : '-');
-        html += `<tr>
-            <td>${(item.formacao_nome || '-').toUpperCase()}</td>
-            <td>${(item.materia_nome  || '-').toUpperCase()}</td>
-            <td>${(item.conteudo      || '-').toUpperCase()}</td>
-            <td>${dataExibir}</td>
-        </tr>`;
+            ? formatDateBR(item.data_revisao)
+            : formatDateBR(item.data_estudo);
+        html += `
+            <tr>
+                <td>${(item.formacao_nome || '-').toUpperCase()}</td>
+                <td>${(item.materia_nome  || '-').toUpperCase()}</td>
+                <td>${(item.conteudo      || '-').toUpperCase()}</td>
+                <td>${dataExibir}</td>
+            </tr>`;
     });
     html += '</tbody></table>';
     body.innerHTML = html;
@@ -516,9 +553,8 @@ function toggleForm() {
     currentTab = 0;
     document.getElementById('formTitle').textContent = 'Novo Estudo';
     document.getElementById('studyForm').reset();
-    document.getElementById('editId').value = '';
-    const hoje = getTodayString();
-    document.getElementById('data_estudo').value = hoje;
+    document.getElementById('editId').value   = '';
+    document.getElementById('data_estudo').value = getTodayString();
     populateSelects();
     setupFormListeners();
     showTab(currentTab);
@@ -560,7 +596,11 @@ function editStudy(id) {
 function setupFormListeners() {
     ['quantidade', 'total_acertos'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', atualizarHintRevisao);
+        if (el) {
+            // Remove listener duplicado antes de adicionar
+            el.removeEventListener('input', atualizarHintRevisao);
+            el.addEventListener('input', atualizarHintRevisao);
+        }
     });
 }
 
@@ -582,6 +622,7 @@ function atualizarHintRevisao() {
             return;
         }
     }
+
     hintEl.style.display = 'none';
     dataEl.classList.remove('input-required-highlight');
     dataEl.required = false;
@@ -621,26 +662,36 @@ async function saveStudy(event) {
         quantidade,
         total_acertos: acertos,
         data_revisao:  dataRevisao,
-        concluido:     editingId ? (state.studies.find(s => s.id == editingId)?.concluido || false) : false,
+        concluido:     editingId
+            ? (state.studies.find(s => s.id == editingId)?.concluido || false)
+            : false,
     };
 
     try {
         const editId = document.getElementById('editId').value;
         let saved;
         if (editId) {
-            saved = await apiFetch(`/api/estudos/${editId}`, { method: 'PUT', body: JSON.stringify(payload) });
+            saved = await apiFetch(`/api/estudos/${editId}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
             const idx = state.studies.findIndex(s => s.id == editId);
             if (idx !== -1) state.studies[idx] = saved;
         } else {
-            saved = await apiFetch('/api/estudos', { method: 'POST', body: JSON.stringify(payload) });
+            saved = await apiFetch('/api/estudos', {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            });
             state.studies.push(saved);
         }
+
         licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
         closeFormModal();
         showToast(editId ? 'Estudo atualizado!' : 'Estudo cadastrado!', 'success');
         atualizarInterface();
     } catch (err) {
         showToast('Erro ao salvar: ' + err.message, 'error');
+        console.error('[saveStudy]', err);
     }
 }
 
@@ -651,8 +702,6 @@ async function toggleFinalizado(id, checked) {
     const study = state.studies.find(s => s.id == id);
     if (!study) return;
 
-    // Bloqueia conclusão apenas se houver questões registradas
-    // com desempenho abaixo de 85% e sem data de revisão informada.
     if (checked && exigeRevisao(study) && (!study.data_revisao || !study.data_revisao.trim())) {
         const desempenho = calcularDesempenho(study).toFixed(0);
         showToast(`Desempenho de ${desempenho}% — informe uma data de revisão antes de concluir.`, 'error');
@@ -673,7 +722,8 @@ async function toggleFinalizado(id, checked) {
         showToast(checked ? 'Estudo finalizado!' : 'Estudo reaberto', 'success');
     } catch (err) {
         showToast('Erro: ' + err.message, 'error');
-        atualizarInterface();
+        console.error('[toggleFinalizado]', err);
+        atualizarInterface(); // reverte o checkbox visualmente
     }
 }
 
@@ -682,7 +732,11 @@ async function toggleFinalizado(id, checked) {
 // =====================================================
 function switchTab(tabId) {
     const idx = tabs.indexOf(tabId);
-    if (idx !== -1) { currentTab = idx; showTab(currentTab); updateNavigationButtons(); }
+    if (idx !== -1) {
+        currentTab = idx;
+        showTab(currentTab);
+        updateNavigationButtons();
+    }
 }
 
 function showTab(index) {
@@ -696,6 +750,8 @@ function updateNavigationButtons() {
     const btnPrev = document.getElementById('btnPrevious');
     const btnNext = document.getElementById('btnNext');
     const btnSave = document.getElementById('btnSave');
+    if (!btnPrev || !btnNext || !btnSave) return;
+
     btnPrev.style.display = currentTab > 0 ? 'inline-flex' : 'none';
     if (currentTab < tabs.length - 1) {
         btnNext.style.display = 'inline-flex';
@@ -706,8 +762,22 @@ function updateNavigationButtons() {
     }
 }
 
-function nextTab()     { if (currentTab < tabs.length - 1) { currentTab++; showTab(currentTab); updateNavigationButtons(); atualizarHintRevisao(); } }
-function previousTab() { if (currentTab > 0)               { currentTab--; showTab(currentTab); updateNavigationButtons(); } }
+function nextTab() {
+    if (currentTab < tabs.length - 1) {
+        currentTab++;
+        showTab(currentTab);
+        updateNavigationButtons();
+        atualizarHintRevisao();
+    }
+}
+
+function previousTab() {
+    if (currentTab > 0) {
+        currentTab--;
+        showTab(currentTab);
+        updateNavigationButtons();
+    }
+}
 
 // =====================================================
 // GERENCIAR MATÉRIAS
@@ -725,7 +795,10 @@ async function saveNewMateria() {
     const nome = document.getElementById('nomeMateria').value.trim().toUpperCase();
     if (!nome) { showToast('Informe o nome da matéria', 'error'); return; }
     try {
-        const nova = await apiFetch('/api/materias', { method: 'POST', body: JSON.stringify({ nome }) });
+        const nova = await apiFetch('/api/materias', {
+            method: 'POST',
+            body: JSON.stringify({ nome })
+        });
         state.subjects.push(nova);
         closeNewMateriaModal();
         showToast(`Matéria "${nome}" criada!`, 'success');
@@ -734,6 +807,7 @@ async function saveNewMateria() {
         if (sel) sel.value = nova.id;
     } catch (err) {
         showToast('Erro: ' + err.message, 'error');
+        console.error('[saveNewMateria]', err);
     }
 }
 
@@ -753,7 +827,10 @@ async function saveNewFormacao() {
     const nome = document.getElementById('nomeFormacao').value.trim().toUpperCase();
     if (!nome) { showToast('Informe o nome da formação', 'error'); return; }
     try {
-        const nova = await apiFetch('/api/formacoes', { method: 'POST', body: JSON.stringify({ nome }) });
+        const nova = await apiFetch('/api/formacoes', {
+            method: 'POST',
+            body: JSON.stringify({ nome })
+        });
         state.formacoes.push(nova);
         closeNewFormacaoModal();
         showToast(`Formação "${nova.nome}" criada!`, 'success');
@@ -762,6 +839,7 @@ async function saveNewFormacao() {
         if (sel) sel.value = nova.id;
     } catch (err) {
         showToast('Erro: ' + err.message, 'error');
+        console.error('[saveNewFormacao]', err);
     }
 }
 
@@ -784,11 +862,12 @@ async function confirmDelete() {
     try {
         await apiFetch(`/api/estudos/${deleteId}`, { method: 'DELETE' });
         state.studies = state.studies.filter(s => s.id != deleteId);
-        licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
+        licitacoes    = state.studies.map(s => ({ ...s, data: s.data_estudo }));
         showToast('Estudo excluído!', 'success');
         atualizarInterface();
     } catch (err) {
         showToast('Erro: ' + err.message, 'error');
+        console.error('[confirmDelete]', err);
     }
     closeDeleteModal();
 }
@@ -799,7 +878,7 @@ async function confirmDelete() {
 function showToast(message, type = 'success') {
     document.querySelectorAll('.floating-message').forEach(m => m.remove());
     const div = document.createElement('div');
-    div.className = `floating-message ${type}`;
+    div.className   = `floating-message ${type}`;
     div.textContent = message;
     document.body.appendChild(div);
     setTimeout(() => {
