@@ -31,8 +31,8 @@ let licitacoes        = [];
 // INICIALIZAÇÃO
 // =====================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Define o filtro padrão como hoje
-    currentDateFilter = getTodayString();
+    // Sem filtro de data padrão — exibe todos os registros do mês
+    currentDateFilter = null;
 
     updateMonthDisplay();
     setupConnectionStatus();
