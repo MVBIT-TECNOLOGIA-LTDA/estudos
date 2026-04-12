@@ -1,152 +1,142 @@
-// ============================================
-// CALENDAR MODAL — dias do mês com registros
-// ============================================
+// =====================================================
+// JORNADA ACADÊMICA — CALENDAR
+// =====================================================
 
-let calendarYear  = new Date().getFullYear();
-let calendarMonth = new Date().getMonth();
-
-// Cache dos estudos por mes/ano para mostrar bolinhas sem sobrescrever state
-let _calendarCache = {};
+let calendarViewMonth = new Date();
+let calendarOpen      = false;
 
 function toggleCalendar() {
     const modal = document.getElementById('calendarModal');
-    if (modal.classList.contains('show')) {
+    if (!modal) return;
+
+    if (calendarOpen) {
         modal.classList.remove('show');
-    } else {
-        calendarYear  = state.currentMonth.getFullYear();
-        calendarMonth = state.currentMonth.getMonth();
-        // Garante que o mês atual já está no cache
-        const key = `${calendarYear}-${calendarMonth + 1}`;
-        if (!_calendarCache[key]) {
-            _calendarCache[key] = licitacoes || [];
-        }
-        renderCalendarDays();
-        modal.classList.add('show');
+        calendarOpen = false;
+        return;
+    }
+
+    // Sincroniza o mês do calendário com o mês atual
+    calendarViewMonth = new Date(state.currentMonth.getFullYear(), state.currentMonth.getMonth(), 1);
+    renderCalendar();
+    modal.classList.add('show');
+    calendarOpen = true;
+
+    // Fecha ao clicar fora
+    setTimeout(() => {
+        document.addEventListener('click', closeCalendarOutside, { once: true });
+    }, 50);
+}
+
+function closeCalendarOutside(e) {
+    const modal = document.getElementById('calendarModal');
+    if (!modal) return;
+    const box = modal.querySelector('.calendar-box');
+    if (box && !box.contains(e.target)) {
+        modal.classList.remove('show');
+        calendarOpen = false;
     }
 }
 
-function changeCalendarMonth(direction) {
-    calendarMonth += direction;
-    if (calendarMonth < 0)  { calendarMonth = 11; calendarYear--; }
-    if (calendarMonth > 11) { calendarMonth = 0;  calendarYear++; }
+function changeCalendarMonth(dir) {
+    calendarViewMonth.setMonth(calendarViewMonth.getMonth() + dir);
+    renderCalendar();
+}
 
-    const key = `${calendarYear}-${calendarMonth + 1}`;
-    if (_calendarCache[key]) {
-        renderCalendarDays();
-    } else {
-        // Busca dados do mês navegado para mostrar bolinhas corretamente
-        apiFetch(`/api/estudos?mes=${calendarMonth + 1}&ano=${calendarYear}`)
-            .then(estudos => {
-                _calendarCache[key] = estudos.map(s => ({ ...s, data: s.data_estudo }));
-                renderCalendarDays();
+function renderCalendar() {
+    const monthNames = [
+        'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+        'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
+    ];
+
+    const y   = calendarViewMonth.getFullYear();
+    const m   = calendarViewMonth.getMonth();
+    const hoje = getTodayString();
+
+    document.getElementById('calendarMonthYear').textContent = `${monthNames[m]} ${y}`;
+
+    const firstDay = new Date(y, m, 1).getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+
+    // Datas com registro neste mês
+    const datesWithStudy = new Set(
+        state.studies
+            .filter(s => s.data_estudo)
+            .map(s => {
+                const [sy, sm] = s.data_estudo.split('-').map(Number);
+                return (sm - 1 === m && sy === y) ? s.data_estudo : null;
             })
-            .catch(() => renderCalendarDays());
-    }
-}
+            .filter(Boolean)
+    );
 
-function renderCalendarDays() {
-    const monthYearEl   = document.getElementById('calendarMonthYear');
-    const daysContainer = document.getElementById('calendarDays');
-    if (!monthYearEl || !daysContainer) return;
+    // Também marca datas de revisão
+    state.studies
+        .filter(s => s.data_revisao && !s.revisao_concluida)
+        .forEach(s => {
+            const [sy, sm] = s.data_revisao.split('-').map(Number);
+            if (sm - 1 === m && sy === y) datesWithStudy.add(s.data_revisao);
+        });
 
-    const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                        'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-    monthYearEl.textContent = `${monthNames[calendarMonth]} ${calendarYear}`;
-
-    // Usa cache do mês visualizado no calendário para as bolinhas
-    const key = `${calendarYear}-${calendarMonth + 1}`;
-    const fonte = _calendarCache[key] || licitacoes || [];
-
-    const diasComRegistros = new Set();
-    fonte.forEach(l => {
-        if (l.data) {
-            const [y, m, d] = l.data.split('-').map(Number);
-            if (y === calendarYear && (m - 1) === calendarMonth) diasComRegistros.add(d);
-        }
-    });
-
-    // Dia selecionado
-    let selectedDay = null;
-    if (currentDateFilter) {
-        const [fy, fm, fd] = currentDateFilter.split('-').map(Number);
-        if (fy === calendarYear && (fm - 1) === calendarMonth) selectedDay = fd;
-    }
-
-    const firstDay    = new Date(calendarYear, calendarMonth, 1).getDay();
-    const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
-    const today       = new Date();
+    const container = document.getElementById('calendarDays');
+    if (!container) return;
 
     let html = '';
-    for (let i = 0; i < firstDay; i++) html += '<div class="calendar-day empty"></div>';
+
+    // Células vazias antes do primeiro dia
+    for (let i = 0; i < firstDay; i++) {
+        html += '<div class="calendar-day empty"></div>';
+    }
 
     for (let d = 1; d <= daysInMonth; d++) {
-        const hasRecord  = diasComRegistros.has(d);
-        const isToday    = calendarYear === today.getFullYear() &&
-                           calendarMonth === today.getMonth()   &&
-                           d === today.getDate();
-        const isSelected = d === selectedDay;
+        const dayStr   = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isToday  = dayStr === hoje;
+        const hasRec   = datesWithStudy.has(dayStr);
+        const isSel    = dayStr === currentDateFilter;
 
-        html += `<div class="calendar-day ${hasRecord ? 'has-record' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected-day' : ''}"
-                      onclick="selectDay(${d})">${d}</div>`;
+        let classes = 'calendar-day';
+        if (isToday) classes += ' today';
+        if (hasRec)  classes += ' has-record';
+        if (isSel)   classes += ' selected-day';
+
+        html += `<div class="${classes}" onclick="selectCalendarDay('${dayStr}')">${d}</div>`;
     }
-    daysContainer.innerHTML = html;
+
+    container.innerHTML = html;
 }
 
-function selectDay(day) {
-    const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-    // Toggle: clique no mesmo dia remove o filtro
+function selectCalendarDay(dateStr) {
     if (currentDateFilter === dateStr) {
+        // Clique duplo: remove filtro
         currentDateFilter = null;
     } else {
         currentDateFilter = dateStr;
-    }
 
-    // Fecha o calendário
-    const modal = document.getElementById('calendarModal');
-    if (modal) modal.classList.remove('show');
+        // Se o mês do dia clicado for diferente do mês atual, muda o mês
+        const [y, m] = dateStr.split('-').map(Number);
+        if (
+            m !== state.currentMonth.getMonth() + 1 ||
+            y !== state.currentMonth.getFullYear()
+        ) {
+            state.currentMonth = new Date(y, m - 1, 1);
+            currentMonth       = state.currentMonth;
+            updateMonthDisplay();
 
-    // Compara com o mês atual ANTES de atualizar state
-    const mesAtual = state.currentMonth.getMonth() + 1;
-    const anoAtual = state.currentMonth.getFullYear();
-    const mesSelecionado = calendarMonth + 1;
-    const anoSelecionado = calendarYear;
-    const mudouDeMes = mesSelecionado !== mesAtual || anoSelecionado !== anoAtual;
-
-    // Navega para o mês do dia selecionado
-    state.currentMonth = new Date(anoSelecionado, calendarMonth, 1);
-    currentMonth = state.currentMonth;
-    updateMonthDisplay();
-
-    if (mudouDeMes) {
-        const key = `${anoSelecionado}-${mesSelecionado}`;
-        if (_calendarCache[key]) {
-            // Já temos os dados no cache
-            state.studies = _calendarCache[key].map(l => ({ ...l, data_estudo: l.data_estudo || l.data }));
-            licitacoes = _calendarCache[key];
-            updateTable();
-            updateDashboard();
-        } else {
-            apiFetch(`/api/estudos?mes=${mesSelecionado}&ano=${anoSelecionado}`)
+            apiFetch(`/api/estudos?mes=${m}&ano=${y}`)
                 .then(estudos => {
                     state.studies = estudos;
-                    licitacoes = estudos.map(s => ({ ...s, data: s.data_estudo }));
-                    _calendarCache[key] = licitacoes;
-                    updateTable();
-                    updateDashboard();
+                    atualizarInterface();
                 })
                 .catch(err => showToast('Erro: ' + err.message, 'error'));
         }
-    } else {
-        filterLicitacoes();
     }
-}
 
-document.addEventListener('DOMContentLoaded', () => {
-    const modal = document.getElementById('calendarModal');
-    if (modal) {
-        modal.addEventListener('click', e => {
-            if (e.target === modal) modal.classList.remove('show');
-        });
-    }
-});
+    // Navega para programados ao selecionar uma data
+    const navItem = document.querySelector('[data-page="programados"]');
+    navigateTo('programados', navItem);
+
+    updateTable();
+    renderCalendar();
+
+    // Fecha o modal
+    document.getElementById('calendarModal').classList.remove('show');
+    calendarOpen = false;
+}
