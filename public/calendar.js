@@ -1,10 +1,12 @@
 // ============================================
 // CALENDAR MODAL — dias do mês com registros
-// (Adaptado da aplicação Licitações)
 // ============================================
 
 let calendarYear  = new Date().getFullYear();
 let calendarMonth = new Date().getMonth();
+
+// Cache dos estudos por mes/ano para mostrar bolinhas sem sobrescrever state
+let _calendarCache = {};
 
 function toggleCalendar() {
     const modal = document.getElementById('calendarModal');
@@ -13,6 +15,11 @@ function toggleCalendar() {
     } else {
         calendarYear  = state.currentMonth.getFullYear();
         calendarMonth = state.currentMonth.getMonth();
+        // Garante que o mês atual já está no cache
+        const key = `${calendarYear}-${calendarMonth + 1}`;
+        if (!_calendarCache[key]) {
+            _calendarCache[key] = licitacoes || [];
+        }
         renderCalendarDays();
         modal.classList.add('show');
     }
@@ -22,7 +29,19 @@ function changeCalendarMonth(direction) {
     calendarMonth += direction;
     if (calendarMonth < 0)  { calendarMonth = 11; calendarYear--; }
     if (calendarMonth > 11) { calendarMonth = 0;  calendarYear++; }
-    renderCalendarDays();
+
+    const key = `${calendarYear}-${calendarMonth + 1}`;
+    if (_calendarCache[key]) {
+        renderCalendarDays();
+    } else {
+        // Busca dados do mês navegado para mostrar bolinhas corretamente
+        apiFetch(`/api/estudos?mes=${calendarMonth + 1}&ano=${calendarYear}`)
+            .then(estudos => {
+                _calendarCache[key] = estudos.map(s => ({ ...s, data: s.data_estudo }));
+                renderCalendarDays();
+            })
+            .catch(() => renderCalendarDays());
+    }
 }
 
 function renderCalendarDays() {
@@ -34,9 +53,12 @@ function renderCalendarDays() {
                         'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     monthYearEl.textContent = `${monthNames[calendarMonth]} ${calendarYear}`;
 
-    // Dias com registros (usa alias licitacoes que aponta para state.studies)
+    // Usa cache do mês visualizado no calendário para as bolinhas
+    const key = `${calendarYear}-${calendarMonth + 1}`;
+    const fonte = _calendarCache[key] || licitacoes || [];
+
     const diasComRegistros = new Set();
-    (licitacoes || []).forEach(l => {
+    fonte.forEach(l => {
         if (l.data) {
             const [y, m, d] = l.data.split('-').map(Number);
             if (y === calendarYear && (m - 1) === calendarMonth) diasComRegistros.add(d);
@@ -78,33 +100,43 @@ function selectDay(day) {
         currentDateFilter = null;
     } else {
         currentDateFilter = dateStr;
-        // Navega para o mês do dia selecionado
-        state.currentMonth = new Date(calendarYear, calendarMonth, 1);
-        currentMonth = state.currentMonth;
-        updateMonthDisplay();
     }
 
     // Fecha o calendário
     const modal = document.getElementById('calendarModal');
     if (modal) modal.classList.remove('show');
 
-    // Se mudou de mês, recarrega; caso contrário só filtra
+    // Compara com o mês atual ANTES de atualizar state
     const mesAtual = state.currentMonth.getMonth() + 1;
     const anoAtual = state.currentMonth.getFullYear();
-    if ((calendarMonth + 1) !== mesAtual || calendarYear !== anoAtual) {
-        const mes = calendarMonth + 1;
-        const ano = calendarYear;
-        apiFetch(`/api/estudos?mes=${mes}&ano=${ano}`)
-            .then(estudos => {
-                state.studies = estudos;
-                licitacoes = state.studies.map(s => ({ ...s, data: s.data_estudo }));
-                state.currentMonth = new Date(ano, mes - 1, 1);
-                currentMonth = state.currentMonth;
-                updateMonthDisplay();
-                updateTable();
-                updateDashboard();
-            })
-            .catch(err => showToast('Erro: ' + err.message, 'error'));
+    const mesSelecionado = calendarMonth + 1;
+    const anoSelecionado = calendarYear;
+    const mudouDeMes = mesSelecionado !== mesAtual || anoSelecionado !== anoAtual;
+
+    // Navega para o mês do dia selecionado
+    state.currentMonth = new Date(anoSelecionado, calendarMonth, 1);
+    currentMonth = state.currentMonth;
+    updateMonthDisplay();
+
+    if (mudouDeMes) {
+        const key = `${anoSelecionado}-${mesSelecionado}`;
+        if (_calendarCache[key]) {
+            // Já temos os dados no cache
+            state.studies = _calendarCache[key].map(l => ({ ...l, data_estudo: l.data_estudo || l.data }));
+            licitacoes = _calendarCache[key];
+            updateTable();
+            updateDashboard();
+        } else {
+            apiFetch(`/api/estudos?mes=${mesSelecionado}&ano=${anoSelecionado}`)
+                .then(estudos => {
+                    state.studies = estudos;
+                    licitacoes = estudos.map(s => ({ ...s, data: s.data_estudo }));
+                    _calendarCache[key] = licitacoes;
+                    updateTable();
+                    updateDashboard();
+                })
+                .catch(err => showToast('Erro: ' + err.message, 'error'));
+        }
     } else {
         filterLicitacoes();
     }
