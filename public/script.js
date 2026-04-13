@@ -154,7 +154,7 @@ async function apiFetch(path, options = {}) {
 }
 
 // =====================================================
-// CARREGAR DADOS (sem filtro de mês — todos os registros)
+// CARREGAR DADOS
 // =====================================================
 async function carregarTudo() {
     setLoading(true);
@@ -162,7 +162,7 @@ async function carregarTudo() {
         const [materias, formacoes, estudos] = await Promise.all([
             apiFetch('/api/materias'),
             apiFetch('/api/formacoes'),
-            apiFetch('/api/estudos')          // sem filtro de mês → tudo
+            apiFetch('/api/estudos')
         ]);
         state.subjects  = materias;
         state.formacoes = formacoes;
@@ -238,7 +238,7 @@ function populateSelects() {
 function calcularDesempenho(study) {
     const qtd     = parseInt(study.quantidade)    || 0;
     const acertos = parseInt(study.total_acertos) || 0;
-    if (qtd <= 0) return null; // sem questões → sem desempenho
+    if (qtd <= 0) return null;
     return (acertos / qtd) * 100;
 }
 
@@ -249,7 +249,7 @@ function exigeRevisao(study) {
 }
 
 // =====================================================
-// DASHBOARD — desempenho por matéria (geral, sem filtro mês)
+// DASHBOARD
 // =====================================================
 function updateDashboard() {
     renderDesempenhoTable(state.studies);
@@ -264,24 +264,33 @@ function renderDesempenhoTable(estudos) {
     estudos.forEach(s => {
         const key = s.materia_id || 'sem-materia';
         if (!byMateria[key]) {
-            byMateria[key] = { nome: (s.materia_nome || 'Sem matéria').toUpperCase(), estudos: 0, questoes: 0, acertos: 0 };
+            byMateria[key] = {
+                nome: (s.materia_nome || 'Sem matéria').toUpperCase(),
+                estudos: 0,
+                questoes: 0,
+                acertos: 0,
+                conteudos: new Set()
+            };
         }
         byMateria[key].estudos++;
         byMateria[key].questoes += parseInt(s.quantidade)    || 0;
         byMateria[key].acertos  += parseInt(s.total_acertos) || 0;
+        if (s.conteudo && s.conteudo.trim() !== '') {
+            byMateria[key].conteudos.add(s.conteudo.trim().toUpperCase());
+        }
     });
 
     const entries = Object.values(byMateria);
     if (entries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Nenhum estudo registrado.</td></tr>';
-        atualizarAlertBar([]);
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-row">Nenhum estudo registrado.</td></tr>';
         return;
     }
 
-    // Ordena: abaixo de 85% primeiro, depois por desempenho asc
+    // Ordena do menor para o maior desempenho
+    // Matérias sem questões vão para o final
     entries.sort((a, b) => {
-        const pa = a.questoes > 0 ? (a.acertos / a.questoes) * 100 : 100;
-        const pb = b.questoes > 0 ? (b.acertos / b.questoes) * 100 : 100;
+        const pa = a.questoes > 0 ? (a.acertos / a.questoes) * 100 : 101;
+        const pb = b.questoes > 0 ? (b.acertos / b.questoes) * 100 : 101;
         return pa - pb;
     });
 
@@ -294,6 +303,10 @@ function renderDesempenhoTable(estudos) {
         const rowClass  = perf !== null && perf < 85 ? 'row-abaixo-meta' : '';
         if (perf !== null && perf < 85) abaixoMeta.push(e.nome);
 
+        const conteudosStr = e.conteudos.size > 0
+            ? [...e.conteudos].join(', ')
+            : '—';
+
         const barHtml = perf !== null
             ? `<div class="perf-bar-wrap">
                 <div class="perf-bar"><div class="perf-fill" style="width:${perf}%;background:${color}"></div></div>
@@ -303,6 +316,7 @@ function renderDesempenhoTable(estudos) {
 
         return `<tr class="${rowClass}">
             <td style="font-weight:500">${e.nome}</td>
+            <td style="font-size:11.5px;color:var(--text2);max-width:220px;white-space:normal;line-height:1.5">${conteudosStr}</td>
             <td>${e.estudos}</td>
             <td>${e.questoes || '—'}</td>
             <td>${e.questoes > 0 ? e.acertos : '—'}</td>
@@ -310,18 +324,12 @@ function renderDesempenhoTable(estudos) {
         </tr>`;
     }).join('');
 
-    atualizarAlertBar(abaixoMeta);
-}
-
-function atualizarAlertBar(abaixo) {
-    const bar  = document.getElementById('dashAlertBar');
-    const text = document.getElementById('dashAlertText');
-    if (!bar || !text) return;
-    if (abaixo.length === 0) {
-        bar.classList.add('hidden');
-    } else {
-        bar.classList.remove('hidden');
-        text.textContent = `${abaixo.length} matéria${abaixo.length > 1 ? 's' : ''} abaixo de 85%: ${abaixo.join(', ')}`;
+    // Notifica matérias abaixo da meta via toast
+    if (abaixoMeta.length > 0) {
+        showToast(
+            `${abaixoMeta.length} matéria${abaixoMeta.length > 1 ? 's' : ''} abaixo de 85%: ${abaixoMeta.join(', ')}`,
+            'error'
+        );
     }
 }
 
@@ -378,7 +386,6 @@ function updateTable() {
         return true;
     });
 
-    // Ordena: mais recentes primeiro
     filtered.sort((a, b) => {
         const da = a.data_estudo || '';
         const db = b.data_estudo || '';
@@ -421,7 +428,7 @@ function updateTable() {
 }
 
 // =====================================================
-// FORMULÁRIO — tela única
+// FORMULÁRIO
 // =====================================================
 function toggleForm() {
     editingId = null;
@@ -501,13 +508,11 @@ async function saveStudy(event) {
     const acertos     = parseInt(document.getElementById('total_acertos').value) || null;
     const dataRevisao = document.getElementById('data_revisao').value            || null;
 
-    // Validação: acertos <= quantidade
     if (quantidade && acertos !== null && acertos > quantidade) {
         showToast('Acertos não podem ser maiores que a quantidade de questões.', 'error');
         return;
     }
 
-    // Validação: revisão obrigatória se < 85%
     if (quantidade && acertos !== null) {
         const perf = (acertos / quantidade) * 100;
         if (perf < 85 && !dataRevisao) {
