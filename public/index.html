@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jornada Acadêmica</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-logo">
+            <span class="logo-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                </svg>
+            </span>
+            <div class="logo-text">
+                <span class="logo-name">Jornada</span>
+                <span class="logo-sub">Acadêmica</span>
+            </div>
+        </div>
+        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Recolher menu">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="sidebar-section-label">Principal</div>
+
+    <nav class="sidebar-nav">
+        <button class="nav-item active" data-page="dashboard" onclick="navigateTo('dashboard', this)">
+            <span class="nav-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                </svg>
+            </span>
+            <span class="nav-label">Dashboard</span>
+        </button>
+
+        <button class="nav-item" data-page="registros" onclick="navigateTo('registros', this)">
+            <span class="nav-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                </svg>
+            </span>
+            <span class="nav-label">Registros</span>
+        </button>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="connection-pill" id="connectionStatus">
+            <span class="conn-dot"></span>
+            <span class="conn-text">Online</span>
+        </div>
+        <button class="btn-new-study" onclick="toggleForm()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>Novo Estudo</span>
+        </button>
+    </div>
+</aside>
+
+<!-- MAIN CONTENT -->
+<div class="app-wrapper" id="appWrapper">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <button class="topbar-menu-btn" onclick="toggleSidebar()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
+            <div class="topbar-breadcrumb">
+                <span class="breadcrumb-page" id="topbarPageTitle">Dashboard</span>
+                <span class="breadcrumb-sep" id="topbarSep" style="display:none">·</span>
+                <span class="breadcrumb-context" id="topbarPageContext"></span>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <div class="topbar-search-wrap" id="topbarSearchWrap" style="display:none">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="search" placeholder="Pesquisar..." oninput="filterStudies()">
+            </div>
+            <div class="topbar-filters" id="topbarFilters" style="display:none">
+                <div class="filter-chip-wrap">
+                    <select id="filterFormacao" onchange="filterStudies()">
+                        <option value="">Todas Formações</option>
+                    </select>
+                </div>
+                <div class="filter-chip-wrap">
+                    <select id="filterMateria" onchange="filterStudies()">
+                        <option value="">Todas Matérias</option>
+                    </select>
+                </div>
+            </div>
+            <button class="topbar-icon-btn" onclick="carregarTudo()" title="Atualizar">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main class="main-content">
+
+        <!-- ============ PAGE: DASHBOARD ============ -->
+        <div class="page active" id="page-dashboard">
+            <!-- Alerta de matérias abaixo de 85% -->
+            <div class="dash-alert-bar hidden" id="dashAlertBar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span id="dashAlertText">Matérias com desempenho abaixo de 85%</span>
+            </div>
+
+            <!-- Resumo geral -->
+            <div class="perf-summary-grid" id="perfSummaryGrid"></div>
+
+            <!-- Desempenho por matéria -->
+            <div class="section-block">
+                <div class="section-head">
+                    <h2 class="section-title">Desempenho por matéria</h2>
+                    <span class="section-sub">Todos os registros</span>
+                </div>
+                <div class="card">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Matéria</th>
+                                    <th>Registros</th>
+                                    <th>Questões</th>
+                                    <th>Acertos</th>
+                                    <th>Desempenho</th>
+                                </tr>
+                            </thead>
+                            <tbody id="desempenhoTableBody">
+                                <tr><td colspan="5" class="empty-row">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ PAGE: REGISTROS ============ -->
+        <div class="page" id="page-registros">
+            <div class="registros-info-bar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <span>Histórico de todos os estudos registrados.</span>
+            </div>
+            <div class="card">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Formação</th>
+                                <th>Matéria</th>
+                                <th>Unidade</th>
+                                <th>Conteúdo</th>
+                                <th>Data</th>
+                                <th>Questões</th>
+                                <th>Desempenho</th>
+                                <th>Revisão</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="estudosTableBody">
+                            <tr><td colspan="9" class="empty-row">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- MODAL FORMULÁRIO (tudo numa tela) -->
+<div class="modal-overlay" id="formModal">
+    <div class="modal-box">
+        <div class="modal-head">
+            <h3 class="modal-title" id="formTitle">Novo Estudo</h3>
+            <button class="modal-close" onclick="closeFormModal(true)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+
+        <form id="studyForm" onsubmit="saveStudy(event)">
+            <input type="hidden" id="editId" value="">
+
+            <!-- Seção: Identificação -->
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="formacao">Formação</label>
+                    <div class="input-with-btn">
+                        <select id="formacao"><option value="">Selecione uma formação</option></select>
+                        <button type="button" class="btn-add-inline" onclick="openNewFormacaoModal()" title="Adicionar formação">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="materia">Matéria</label>
+                    <div class="input-with-btn">
+                        <select id="materia"><option value="">Selecione uma matéria</option></select>
+                        <button type="button" class="btn-add-inline" onclick="openNewMateriaModal()" title="Adicionar matéria">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="data_estudo">Data do Estudo</label>
+                    <input type="date" id="data_estudo">
+                </div>
+            </div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label for="unidade">Unidade</label>
+                    <input type="text" id="unidade" placeholder="Ex: UNIDADE 1">
+                </div>
+                <div class="form-group">
+                    <label for="conteudo">Conteúdo</label>
+                    <input type="text" id="conteudo" placeholder="Ex: LEGISLAÇÃO TRIBUTÁRIA">
+                </div>
+            </div>
+
+            <!-- Seção: Questões -->
+            <div class="form-section-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Questões
+            </div>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label for="quantidade">Quantidade de Questões</label>
+                    <input type="number" id="quantidade" min="0" step="1" placeholder="0" oninput="atualizarHintRevisao()">
+                </div>
+                <div class="form-group">
+                    <label for="total_acertos">Total de Acertos</label>
+                    <input type="number" id="total_acertos" min="0" step="1" placeholder="0" oninput="atualizarHintRevisao()">
+                </div>
+            </div>
+
+            <!-- Hint de revisão -->
+            <div class="hint-revisao" id="hintRevisao"></div>
+            <div class="hint-revisao-ok" id="hintRevisaoOk">✅ Desempenho ≥ 85% — revisão não é obrigatória.</div>
+
+            <!-- Seção: Revisão -->
+            <div class="form-section-title">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Revisão
+                <span style="font-weight:400;color:var(--text2);text-transform:none;letter-spacing:0;font-size:11px">(obrigatória se desempenho &lt; 85%)</span>
+            </div>
+
+            <div class="form-group" style="max-width:280px">
+                <label for="data_revisao">Data de Revisão</label>
+                <input type="date" id="data_revisao">
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" onclick="closeFormModal(true)" class="btn-secondary">Cancelar</button>
+                <button type="submit" class="btn-primary">Salvar Estudo</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL NOVA MATÉRIA -->
+<div class="modal-overlay" id="newMateriaModal">
+    <div class="modal-box modal-sm">
+        <div class="modal-head">
+            <h3 class="modal-title">Nova Matéria</h3>
+            <button class="modal-close" onclick="closeNewMateriaModal()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="form-group">
+            <label for="nomeMateria">Nome da Matéria</label>
+            <input type="text" id="nomeMateria" placeholder="Ex: MATEMÁTICA, FÍSICA...">
+        </div>
+        <div class="modal-actions">
+            <button type="button" onclick="closeNewMateriaModal()" class="btn-secondary">Cancelar</button>
+            <button type="button" onclick="saveNewMateria()" class="btn-success">Criar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL NOVA FORMAÇÃO -->
+<div class="modal-overlay" id="newFormacaoModal">
+    <div class="modal-box modal-sm">
+        <div class="modal-head">
+            <h3 class="modal-title">Nova Formação</h3>
+            <button class="modal-close" onclick="closeNewFormacaoModal()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="form-group">
+            <label for="nomeFormacao">Nome da Formação</label>
+            <input type="text" id="nomeFormacao" placeholder="Ex: ENGENHARIA, MEDICINA...">
+        </div>
+        <div class="modal-actions">
+            <button type="button" onclick="closeNewFormacaoModal()" class="btn-secondary">Cancelar</button>
+            <button type="button" onclick="saveNewFormacao()" class="btn-success">Criar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL EXCLUIR -->
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-box modal-sm modal-delete">
+        <button class="modal-close modal-close-abs" onclick="closeDeleteModal()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <div class="delete-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+        </div>
+        <p class="delete-msg" id="deleteMessage">Tem certeza que deseja excluir este estudo?</p>
+        <div class="modal-actions modal-actions-center">
+            <button type="button" onclick="confirmDelete()" class="btn-danger">Excluir</button>
+            <button type="button" onclick="closeDeleteModal()" class="btn-secondary">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
