@@ -63,12 +63,6 @@
             <span class="conn-dot"></span>
             <span class="conn-text">Online</span>
         </div>
-        <button class="btn-new-study" onclick="toggleForm()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>Novo Estudo</span>
-        </button>
     </div>
 </aside>
 
@@ -108,11 +102,19 @@
                     </select>
                 </div>
             </div>
-            <button class="topbar-icon-btn" onclick="carregarTudo()" title="Atualizar">
+            <!-- Sincronizar -->
+            <button class="topbar-icon-btn" onclick="carregarTudo()" title="Sincronizar">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="23 4 23 10 17 10"/>
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                 </svg>
+            </button>
+            <!-- Novo Estudo — ao lado do botão de sincronização -->
+            <button class="topbar-icon-btn btn-novo-estudo" onclick="toggleForm()" title="Novo Estudo">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <span>Novo Estudo</span>
             </button>
         </div>
     </header>
@@ -138,14 +140,13 @@
                                 <tr>
                                     <th>Matéria</th>
                                     <th>Conteúdos</th>
-                                    <th>Registros</th>
                                     <th>Questões</th>
                                     <th>Acertos</th>
                                     <th>Desempenho</th>
                                 </tr>
                             </thead>
                             <tbody id="desempenhoTableBody">
-                                <tr><td colspan="6" class="empty-row">Carregando...</td></tr>
+                                <tr><td colspan="5" class="empty-row">Carregando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -173,12 +174,11 @@
                                 <th>Data</th>
                                 <th>Questões</th>
                                 <th>Desempenho</th>
-                                <th>Revisão</th>
                                 <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="estudosTableBody">
-                            <tr><td colspan="9" class="empty-row">Carregando...</td></tr>
+                            <tr><td colspan="8" class="empty-row">Carregando...</td></tr>
                         </tbody>
                     </table>
                 </div>
