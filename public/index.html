@@ -121,13 +121,6 @@
 
         <!-- ============ PAGE: DASHBOARD ============ -->
         <div class="page active" id="page-dashboard">
-            <!-- Alerta de matérias abaixo de 85% -->
-            <div class="dash-alert-bar hidden" id="dashAlertBar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <span id="dashAlertText">Matérias com desempenho abaixo de 85%</span>
-            </div>
 
             <!-- Resumo geral -->
             <div class="perf-summary-grid" id="perfSummaryGrid"></div>
@@ -136,7 +129,7 @@
             <div class="section-block">
                 <div class="section-head">
                     <h2 class="section-title">Desempenho por matéria</h2>
-                    <span class="section-sub">Todos os registros</span>
+                    <span class="section-sub">Todos os registros · ordenado do menor para o maior desempenho</span>
                 </div>
                 <div class="card">
                     <div class="table-wrap">
@@ -144,6 +137,7 @@
                             <thead>
                                 <tr>
                                     <th>Matéria</th>
+                                    <th>Conteúdos</th>
                                     <th>Registros</th>
                                     <th>Questões</th>
                                     <th>Acertos</th>
@@ -151,7 +145,7 @@
                                 </tr>
                             </thead>
                             <tbody id="desempenhoTableBody">
-                                <tr><td colspan="5" class="empty-row">Carregando...</td></tr>
+                                <tr><td colspan="6" class="empty-row">Carregando...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -194,7 +188,7 @@
     </main>
 </div>
 
-<!-- MODAL FORMULÁRIO (tudo numa tela) -->
+<!-- MODAL FORMULÁRIO -->
 <div class="modal-overlay" id="formModal">
     <div class="modal-box">
         <div class="modal-head">
@@ -207,7 +201,6 @@
         <form id="studyForm" onsubmit="saveStudy(event)">
             <input type="hidden" id="editId" value="">
 
-            <!-- Seção: Identificação -->
             <div class="form-grid">
                 <div class="form-group">
                     <label for="formacao">Formação</label>
@@ -244,7 +237,6 @@
                 </div>
             </div>
 
-            <!-- Seção: Questões -->
             <div class="form-section-title">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 Questões
@@ -261,11 +253,9 @@
                 </div>
             </div>
 
-            <!-- Hint de revisão -->
             <div class="hint-revisao" id="hintRevisao"></div>
             <div class="hint-revisao-ok" id="hintRevisaoOk">✅ Desempenho ≥ 85% — revisão não é obrigatória.</div>
 
-            <!-- Seção: Revisão -->
             <div class="form-section-title">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Revisão
