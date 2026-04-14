@@ -260,27 +260,37 @@ function renderDesempenhoTable(estudos) {
     const tbody = document.getElementById('desempenhoTableBody');
     if (!tbody) return;
 
-    const byMateria = {};
+    // Agrupa por matéria + conteúdo (chave composta)
+    // Cada combinação única de matéria/conteúdo vira uma linha separada
+    const byConteudo = {};
+
     estudos.forEach(s => {
-        const key = s.materia_id || 'sem-materia';
-        if (!byMateria[key]) {
-            byMateria[key] = {
-                nome: (s.materia_nome || 'Sem matéria').toUpperCase(),
+        const materiaId   = s.materia_id   || 'sem-materia';
+        const materiaNome = (s.materia_nome || 'Sem matéria').toUpperCase();
+        const conteudo    = s.conteudo && s.conteudo.trim() !== ''
+            ? s.conteudo.trim().toUpperCase()
+            : '—';
+
+        // Chave única: materia_id + conteudo
+        const key = `${materiaId}||${conteudo}`;
+
+        if (!byConteudo[key]) {
+            byConteudo[key] = {
+                materiaNome,
+                conteudo,
                 questoes: 0,
-                acertos: 0,
-                conteudos: new Set()
+                acertos:  0,
             };
         }
-        byMateria[key].questoes += parseInt(s.quantidade)    || 0;
-        byMateria[key].acertos  += parseInt(s.total_acertos) || 0;
-        if (s.conteudo && s.conteudo.trim() !== '') {
-            byMateria[key].conteudos.add(s.conteudo.trim().toUpperCase());
-        }
+
+        byConteudo[key].questoes += parseInt(s.quantidade)    || 0;
+        byConteudo[key].acertos  += parseInt(s.total_acertos) || 0;
     });
 
-    const entries = Object.values(byMateria);
+    const entries = Object.values(byConteudo);
+
     if (entries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-row">Nenhum estudo registrado.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-row">Nenhum estudo registrado.</td></tr>';
         return;
     }
 
@@ -294,15 +304,12 @@ function renderDesempenhoTable(estudos) {
     const abaixoMeta = [];
 
     tbody.innerHTML = entries.map(e => {
-        const perf      = e.questoes > 0 ? Math.round((e.acertos / e.questoes) * 100) : null;
-        const perfStr   = perf !== null ? perf + '%' : '—';
-        const color     = perf === null ? '#6b7280' : perf >= 85 ? '#16a34a' : perf >= 70 ? '#f59e0b' : '#dc2626';
-        const rowClass  = perf !== null && perf < 85 ? 'row-abaixo-meta' : '';
-        if (perf !== null && perf < 85) abaixoMeta.push(e.nome);
+        const perf     = e.questoes > 0 ? Math.round((e.acertos / e.questoes) * 100) : null;
+        const perfStr  = perf !== null ? perf + '%' : '—';
+        const color    = perf === null ? '#6b7280' : perf >= 85 ? '#16a34a' : perf >= 70 ? '#f59e0b' : '#dc2626';
+        const rowClass = perf !== null && perf < 85 ? 'row-abaixo-meta' : '';
 
-        const conteudosStr = e.conteudos.size > 0
-            ? [...e.conteudos].join(', ')
-            : '—';
+        if (perf !== null && perf < 85) abaixoMeta.push(`${e.materiaNome} › ${e.conteudo}`);
 
         const barHtml = perf !== null
             ? `<div class="perf-bar-wrap">
@@ -312,8 +319,8 @@ function renderDesempenhoTable(estudos) {
             : `<span style="color:var(--text3);font-size:12px">Sem questões</span>`;
 
         return `<tr class="${rowClass}">
-            <td style="font-weight:500">${e.nome}</td>
-            <td style="font-size:11.5px;color:var(--text2);max-width:220px;white-space:normal;line-height:1.5">${conteudosStr}</td>
+            <td style="font-weight:500;white-space:nowrap">${e.materiaNome}</td>
+            <td style="font-size:12px;color:var(--text2);max-width:260px;white-space:normal;line-height:1.5">${e.conteudo}</td>
             <td>${e.questoes || '—'}</td>
             <td>${e.questoes > 0 ? e.acertos : '—'}</td>
             <td>${barHtml}</td>
@@ -322,7 +329,7 @@ function renderDesempenhoTable(estudos) {
 
     if (abaixoMeta.length > 0) {
         showToast(
-            `${abaixoMeta.length} matéria${abaixoMeta.length > 1 ? 's' : ''} abaixo de 85%: ${abaixoMeta.join(', ')}`,
+            `${abaixoMeta.length} conteúdo${abaixoMeta.length > 1 ? 's' : ''} abaixo de 85%`,
             'error'
         );
     }
